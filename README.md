@@ -6,8 +6,7 @@ Your servers' fail2ban bans, drawn as a prison for bots.
 
 ![The yard: a repeat offender walks in through the gate and is met by a welcoming party](docs/yard.gif)
 
-**[Live demo](https://pgodlews.github.io/botcatraz/)**: built every hour from invented
-records, so it changes like a real server would.
+**[Live demo](https://pgodlews.github.io/botcatraz/)**: built from invented records.
 
 Every address fail2ban locks out becomes a pixel-art robot in an orange jumpsuit.
 There are three pages:

@@ -1,13 +1,11 @@
 name: Demo
 
 # Builds the sample site (invented records, documentation-range addresses only)
-# and publishes it with GitHub Pages. The sample moves with the clock, so the
-# hourly rebuild brings new arrivals and releases, like a real server would.
+# and publishes it with GitHub Pages, on every push to main. "Run workflow" on
+# the Actions tab builds it again by hand.
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: "7 * * * *"
   workflow_dispatch:
 
 permissions:
