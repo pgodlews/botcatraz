@@ -4,6 +4,9 @@
 
 Your servers' fail2ban bans, drawn as a prison for bots.
 
+**[Live demo](https://pgodlews.github.io/botcatraz/)**: built every hour from invented
+records, so it changes like a real server would.
+
 Every address fail2ban locks out becomes a pixel-art robot in an orange jumpsuit.
 There are three pages:
 
@@ -40,7 +43,8 @@ python3 -m http.server 8850 --bind 127.0.0.1 --directory www
 ```
 
 Then open <http://127.0.0.1:8850/>. The records are invented by
-[`sample/make_sample.py`](sample/make_sample.py). Run the build again a while
+[`sample/make_sample.py`](sample/make_sample.py). The [live demo](https://pgodlews.github.io/botcatraz/) is
+this same build, published by [`.github/workflows/demo.yml`](.github/workflows/demo.yml). Run the build again a while
 later and an open yard picks up the new arrivals and releases within five
 minutes. "Replay last arrival" shows an arrival straight away, and `?fast=6` on
 the yard's address speeds time up.
