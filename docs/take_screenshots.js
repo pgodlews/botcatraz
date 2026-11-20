@@ -1,4 +1,4 @@
-// Takes the README screenshots (docs/front.png, cells.png, yard.png) from a running
+// Takes the README screenshots (docs/front.png, cells.png) from a running
 // site, with the dates and times of day blanked out and only the first half of every
 // address left: 203.0.•.• and 2001:db8:0:0:•:•:•:•. Then records docs/yard.gif, the
 // yard's picture alone (no text around it) while a repeat offender walks in and is met
@@ -123,7 +123,6 @@ async function yardGif(browser) {
       await page.locator(".cell .door").first().click();   // open the first rap sheet
       await page.waitForTimeout(1500);
     });
-    await shot(`/${server}/yard.html`, "yard.png", 1120, page => page.waitForTimeout(8000));
     await yardGif(browser);
   } finally {
     await browser.close();
