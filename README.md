@@ -4,6 +4,8 @@
 
 Your servers' fail2ban bans, drawn as a prison for bots.
 
+![The yard: a repeat offender walks in through the gate and is met by a welcoming party](docs/yard.gif)
+
 **[Live demo](https://pgodlews.github.io/botcatraz/)**: built every hour from invented
 records, so it changes like a real server would.
 
@@ -21,8 +23,6 @@ There are three pages:
 - **Front page**: one card per server, when you watch more than one.
 
 ![The cells page: a rap sheet open above a row of cells](docs/cells.png)
-
-![The yard: robots at the basketball court, the benches and the weights](docs/yard.png)
 
 ![The front page: one card per server](docs/front.png)
 

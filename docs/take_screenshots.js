@@ -1,17 +1,22 @@
 // Takes the README screenshots (docs/front.png, cells.png, yard.png) from a running
 // site, with the dates and times of day blanked out and only the first half of every
-// address left: 203.0.•.• and 2001:db8:0:0:•:•:•:•.
+// address left: 203.0.•.• and 2001:db8:0:0:•:•:•:•. Then records docs/yard.gif, the
+// yard's picture alone (no text around it) while a repeat offender walks in and is met
+// by a welcoming party.
 //
 //   node docs/take_screenshots.js BASE_URL SERVER_ID
 //   node docs/take_screenshots.js http://127.0.0.1:8850 sample2
 //
-// Needs Playwright (npm install --no-save playwright && npx playwright install chromium).
-// PW_CHANNEL=chrome uses an installed Google Chrome instead.
+// Needs Playwright (npm install --no-save playwright && npx playwright install chromium)
+// and, for the GIF, ffmpeg. PW_CHANNEL=chrome uses an installed Google Chrome instead.
 //
 // The blanking covers text only. Read every picture before you commit it: network
 // names, countries, user names tried and request paths stay as they are.
 "use strict";
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
+const { execFileSync } = require("child_process");
 const { chromium } = require("playwright");
 
 const [base, server] = process.argv.slice(2);
@@ -51,6 +56,51 @@ function mask() {
   }
 }
 
+// docs/yard.gif: the yard at twice its pixel size (1280 x 720), 12.5 frames a second.
+// The page runs on a fake clock that moves 80 ms per frame, so the GIF plays at real
+// speed however slow the capture is. "Replay last arrival" brings in a repeat offender
+// (Math.random is pinned for that one click so it picks one when there is one), and the
+// recording stops a second after the welcoming party ends, or after 30 seconds.
+async function yardGif(browser) {
+  const STEP = 80, W = 1280;
+  const context = await browser.newContext({ viewport: { width: W + 120, height: 1400 }, colorScheme: "light" });
+  const page = await context.newPage();
+  await page.clock.install();
+  await page.goto(`${base}/${server}/yard.html`, { waitUntil: "load" });
+  await page.evaluate(() => document.fonts.ready);
+  await page.addStyleTag({ content: `.stage, .scroll { width: ${W}px !important; max-width: none !important; }` });
+  await page.evaluate(() => dispatchEvent(new Event("resize")));
+  await page.clock.runFor(6000);   // let the yard settle into its routines
+  const frames = fs.mkdtempSync(path.join(os.tmpdir(), "yard-gif-"));
+  const box = await page.locator("#yard").boundingBox();
+  const clip = { x: Math.round(box.x), y: Math.round(box.y), width: W, height: W * 9 / 16 };
+  let id = null, waved = false, tail = 0;
+  for (let f = 0; f < 30000 / STEP && tail < 1000 / STEP; f++) {
+    if (f === 6) {
+      id = await page.evaluate(() => {
+        const random = Math.random; Math.random = () => 0;
+        document.getElementById("replay").click();
+        Math.random = random;
+        const q = window.__yard.queue.at(-1); return q ? q.id : null;
+      });
+    }
+    await page.clock.runFor(STEP);
+    await page.evaluate(mask);
+    await page.screenshot({ path: path.join(frames, String(f).padStart(4, "0") + ".png"), clip });
+    if (id) {
+      const anim = await page.evaluate(id => (window.__yard.robots.get(id) || {}).anim, id);
+      if (anim === "wave") waved = true; else if (waved) tail++;
+    }
+  }
+  await context.close();
+  // One palette for the whole GIF, no dithering: the art is flat pixel colours.
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-framerate", String(1000 / STEP), "-i", path.join(frames, "%04d.png"),
+    "-filter_complex", "split[a][b];[a]palettegen=max_colors=128:stats_mode=full[p];[b][p]paletteuse=dither=none:diff_mode=rectangle",
+    "-loop", "0", path.join(out, "yard.gif")]);
+  fs.rmSync(frames, { recursive: true, force: true });
+  console.log("wrote docs/yard.gif");
+}
+
 (async () => {
   const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {});
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: "light" });
@@ -74,6 +124,7 @@ function mask() {
       await page.waitForTimeout(1500);
     });
     await shot(`/${server}/yard.html`, "yard.png", 1120, page => page.waitForTimeout(8000));
+    await yardGif(browser);
   } finally {
     await browser.close();
   }
