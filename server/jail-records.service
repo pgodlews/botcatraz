@@ -1,0 +1,37 @@
+[Unit]
+Description=Update the jail records and their export snapshot
+After=fail2ban.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jail-records sync
+Nice=10
+UMask=0027
+
+# It runs as root to ask fail2ban for its bans and to read the SSH journal and the
+# web logs. The sandbox below leaves it able to do that and little else: it can
+# write only its own records, has no internet access (the geo download is
+# jail-records-geo.service), and of root's powers keeps only reading any file.
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+ProtectSystem=strict
+ReadWritePaths=/var/lib/jail-records
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# AF_UNIX for fail2ban's socket, AF_NETLINK for this machine's own addresses
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+IPAddressDeny=any

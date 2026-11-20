@@ -1,0 +1,10 @@
+[Unit]
+Description=Rebuild the jail pages every @EVERY@ minutes
+
+[Timer]
+OnCalendar=*:0/@EVERY@
+RandomizedDelaySec=10
+Persistent=true
+
+[Install]
+WantedBy=timers.target

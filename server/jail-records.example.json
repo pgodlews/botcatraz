@@ -1,0 +1,9 @@
+{
+  "name": "server1",
+  "jails": {
+    "sshd": {"door": "ssh", "wing": "S", "label": "SSH"},
+    "web-auth": {"door": "web", "wing": "W", "label": "web endpoint"}
+  },
+  "web_logs": "/var/log/nginx/protected.access.log*",
+  "own": ["203.0.113.10", "2001:db8::10"]
+}

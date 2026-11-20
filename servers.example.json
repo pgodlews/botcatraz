@@ -1,0 +1,4 @@
+[
+  {"id": "server1", "ssh": "jail-export@server1.example.com", "key": "~/.ssh/jail_export"},
+  {"id": "server2", "ssh": "jail-export@203.0.113.20", "key": "~/.ssh/jail_export"}
+]

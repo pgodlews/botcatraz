@@ -1,0 +1,29 @@
+# Example for /etc/fail2ban/jail.local. The addresses are placeholders from the
+# documentation ranges: replace them with your own before installing.
+[DEFAULT]
+bantime          = 86400
+bantime.increment = true
+bantime.maxtime  = 604800
+findtime         = 3600
+maxretry         = 3
+backend          = systemd
+
+# Three failures in an hour: banned for 24 hours, doubling per repeat up to 7 days.
+# What counts as a failure is widened in filter.d/sshd.local.
+#
+# Never banned:
+#   - this machine, and the fixed addresses you list in ignoreip (another server
+#     of yours, a VPN subnet you can always come in through);
+#   - any address that has logged in over SSH with a valid key. jail-records keeps
+#     that list, so a new home or travel address is covered from its first good
+#     login. Before that first login it is a stranger like any other: three
+#     failed attempts in an hour and it is out for a day.
+# Keep a second way in (a VPN, another server to hop through, the provider's
+# console). If a ban ever locks you out: fail2ban-client set sshd unbanip <address>
+[sshd]
+enabled  = true
+port     = ssh
+logpath  = %(sshd_log)s
+ignoreip = 127.0.0.1/8 ::1 203.0.113.10 2001:db8::10 198.51.100.0/24
+ignorecommand = /usr/local/sbin/jail-records is-trusted <ip>
+ignorecache = key="<ip>", max-count=200, max-time=10m

@@ -1,0 +1,644 @@
+#!/usr/bin/env python3
+"""The jail's record office: who fail2ban locked up on this server, and who knocked.
+
+fail2ban remembers only the latest ban per address, the ssh journal and the nginx
+log rotate away. This keeps a lasting copy in SQLite, with the country and
+network of each address looked up in a local database (nothing is sent anywhere).
+
+  jail-records sync         bring the records up to date and write the export snapshot
+                            (root; jail-records.timer runs this every 5 minutes)
+  jail-records export       print the export snapshot, the JSON the jail pages are built
+                            from. Needs no root: members of the jail-export group may run
+                            it, and the web host's SSH key is locked to this command.
+  jail-records geo-update [--force]   download this month's DB-IP Lite databases when the
+                            copy is more than 35 days old (root; jail-records-geo.timer)
+  jail-records stats        a few counts (root)
+  jail-records is-trusted <address>   exit 0 if the address is one of ours (fail2ban's
+                            SSH jail asks this before counting a failure; root)
+
+Settings: /etc/jail-records.json (optional; see jail-records.example.json)
+  name      what the pages call this server (default "server")
+  jails     fail2ban jails to record: {"sshd": {"door": "ssh", "wing": "S", "label": "SSH"}}
+  web_logs  nginx access logs of a token-protected site, for the "web" door (optional;
+            a glob, in the log format described at read_web below)
+  address   this server's public address, for its place on the map (default: found
+            from the routing table)
+  own       addresses of ours beyond this machine's own, never recorded
+
+Records: /var/lib/jail-records/records.sqlite3 (root only)
+Snapshot: /var/lib/jail-records/export/jail.json (root and the jail-export group)
+  offenders  one row per address: first/last seen, country, city, network
+  bookings   one row per ban: jail, sentence, which offence it was, the evidence
+  sightings  per address, per day, per door (ssh / web): how often, as whom, asking for what
+  hourly     knocks per hour per door
+  trusted    addresses that logged in over SSH or showed a valid web token.
+             They, and our own servers, are never recorded as offenders.
+"""
+import calendar
+import collections
+import glob
+import gzip
+import json
+import os
+import re
+import shutil
+import socket
+import sqlite3
+import subprocess
+import sys
+import time
+import urllib.request
+
+HOME = "/var/lib/jail-records"
+DB = f"{HOME}/records.sqlite3"
+GEO = f"{HOME}/geo"
+EXPORT = f"{HOME}/export/jail.json"
+GEO_MAX_AGE = 35 * 86400
+F2B_DB = "/var/lib/fail2ban/fail2ban.sqlite3"
+CONFIG = "/etc/jail-records.json"
+WINDOW_DAYS = 7
+# Requests that are not a knock at the web door: what any browser or polite crawler
+# asks a server for unprompted. A fail2ban filter for the same site should ignore
+# the same list.
+POLITE = re.compile(r"(?:GET|HEAD) /(?:(?:index\.html?|favicon\.(?:ico|png|svg)|apple-touch-icon(?:-precomposed)?\.png"
+                    r"|robots\.txt|sitemap\.xml|ads\.txt|humans\.txt|security\.txt)(?:\?\S*)?)? HTTP")
+GEO_FILES = {"city": "dbip-city-lite", "asn": "dbip-asn-lite"}
+IP_RE = r"(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{0,4}){2,7})"
+
+
+
+def load_config():
+    cfg = {"name": "server", "own": [], "web_logs": None,
+           "jails": {"sshd": {"door": "ssh", "wing": "S", "label": "SSH"}}}
+    try:
+        with open(CONFIG) as fh:
+            cfg.update(json.load(fh))
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError) as exc:
+        sys.exit(f"jail-records: {CONFIG}: {exc}")
+    return cfg
+
+
+def local_addresses():
+    """Every address this machine holds: it never records itself."""
+    try:
+        out = subprocess.run(["ip", "-o", "addr", "show"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        out = ""
+    # Plus the "any address" forms, which sshd names when it starts listening.
+    return set(re.findall(r"\binet6? ([0-9a-fA-F.:]+)/", out)) | {"127.0.0.1", "::1", "0.0.0.0", "::"}
+
+
+def public_address():
+    """The address this server reaches the internet from, for its place on the map."""
+    if CFG.get("address"):
+        return CFG["address"]
+    try:
+        out = subprocess.run(["ip", "-4", "route", "get", "1.1.1.1"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"\bsrc (\S+)", out)
+    return m.group(1) if m else None
+
+
+CFG = load_config()
+JAILS = {jail: (spec or {}).get("door", "ssh") for jail, spec in CFG["jails"].items()}
+ACCESS_LOGS = CFG.get("web_logs")
+OWN = local_addresses() | set(CFG.get("own") or [])
+
+SCHEMA = """
+create table if not exists offenders(
+    ip text primary key, first_seen integer, last_seen integer,
+    cc text, country text, city text, lat real, lon real, asn text, org text, geo_month text);
+create table if not exists bookings(
+    jail text, ip text, booked_at integer, sentence integer, release_at integer,
+    ban_no integer, failures integer, evidence text, released_early integer,
+    primary key(jail, ip, booked_at));
+create table if not exists sightings(
+    day text, door text, ip text, hits integer, detail text, first integer, last integer,
+    primary key(day, door, ip));
+create table if not exists hourly(door text, hour integer, hits integer, primary key(door, hour));
+create table if not exists trusted(ip text primary key, why text, since integer);
+create table if not exists meta(key text primary key, value text);
+"""
+
+
+def run(*cmd):
+    return subprocess.run(cmd, capture_output=True, text=True).stdout
+
+
+def utc(stamp):
+    return calendar.timegm(time.strptime(stamp, "%Y-%m-%d %H:%M:%S"))
+
+
+def iso(stamp):
+    m = re.match(r"(\d{4}-\d\d-\d\d)T(\d\d:\d\d:\d\d)", stamp)
+    return utc(f"{m.group(1)} {m.group(2)}") if m else None
+
+
+def day_of(ts):
+    return time.strftime("%Y-%m-%d", time.gmtime(ts))
+
+
+def connect():
+    os.makedirs(HOME, mode=0o700, exist_ok=True)
+    db = sqlite3.connect(DB)
+    db.executescript(SCHEMA)
+    if not db.execute("select 1 from meta where key='created'").fetchone():
+        db.execute("insert into meta values('created', ?)", (str(int(time.time())),))
+    os.chmod(DB, 0o600)
+    return db
+
+
+# ---------------------------------------------------------------- sources
+
+def jail_settings(jail):
+    def number(key):
+        # A setting the jail does not use reads "None" (bantime.maxtime without
+        # bantime.increment, for one).
+        value = run("fail2ban-client", "get", jail, key).strip()
+        return int(value) if value.lstrip("-").isdigit() else 0
+    s = {k: number(k) for k in ("maxretry", "findtime", "bantime")}
+    s["maxtime"] = number("bantime.maxtime")
+    return s
+
+
+def live_bans(jail):
+    out = {}
+    for line in run("fail2ban-client", "get", jail, "banip", "--with-time").splitlines():
+        m = re.match(rf"({IP_RE})\s+(\S+ \S+) \+ (\d+) = (\S+ \S+)", line.strip())
+        if m:
+            out[m.group(1)] = (utc(m.group(2)), int(m.group(3)), utc(m.group(4)))
+    return out
+
+
+def read_ssh(since):
+    """One entry per ssh connection that did not end in a login: address, time, user tried."""
+    conns, accepted = {}, set()
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(since))
+    for line in run("journalctl", "-u", "ssh", "--since", stamp, "--utc",
+                    "-o", "short-iso", "--no-pager", "-q").splitlines():
+        m = re.match(r"(\S+) \S+ sshd\[(\d+)\]: (.*)", line)
+        if not m:
+            continue
+        ts, pid, msg = iso(m.group(1)), m.group(2), m.group(3)
+        if msg.startswith(("Server listening on", "Received signal", "Received SIGHUP")):
+            continue  # sshd itself starting or stopping, not a connection
+        ipm = re.search(rf"(?:from|user \S*|by|with) ({IP_RE})(?: port|$| )", msg) or \
+            re.search(rf"({IP_RE}) port \d+", msg)
+        if not ipm or ts is None:
+            continue
+        ip = ipm.group(1)
+        if msg.startswith("Accepted "):
+            accepted.add(ip)
+            continue
+        c = conns.setdefault(pid + ip, {"ip": ip, "ts": ts, "user": None})
+        um = re.search(r"(?:Invalid user|invalid user|authenticating user|Failed \S+ for) (\S*) ", msg)
+        if um and um.group(1) and um.group(1) != "from":
+            c["user"] = um.group(1)[:40]
+    return list(conns.values()), accepted
+
+
+def read_web():
+    """Requests to the token-protected site without a valid token, plus the addresses that had one.
+
+    Reads nginx lines of the form
+        time address "request" status bytes auth=ok|deny [name=value ...] ua="agent"
+    where time is $time_iso8601 and auth says whether the request carried a valid
+    token (see fail2ban/README.md for an nginx log_format that writes this)."""
+    rows, friends = [], set()
+    for path in glob.glob(ACCESS_LOGS) if ACCESS_LOGS else []:
+        opener = gzip.open if path.endswith(".gz") else open
+        try:
+            with opener(path, "rt", errors="replace") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            m = re.match(rf'(\S+) ({IP_RE}) "([^"]*)" (\d+) \d+ auth=(\S+)(?: \S+)*? ua="(.*)"$', line)
+            if not m:
+                continue
+            ts, ip, req, _status, auth, ua = m.groups()
+            if auth == "ok":
+                friends.add(ip)
+                continue
+            if "/.well-known/acme-challenge/" in req:
+                continue  # the certificate authority checking the domain, not a scanner
+            if POLITE.match(req):
+                continue  # what any browser or polite crawler asks for; not a knock
+            parts = req.split(" ")
+            rows.append({"ts": iso(ts), "ip": ip, "ua": ua[:200],
+                         "req": (" ".join(parts[:2]) if len(parts) >= 2 else req)[:120]})
+    return [r for r in rows if r["ts"]], friends
+
+
+# ---------------------------------------------------------------- geo
+
+class Geo:
+    def __init__(self):
+        self.city = self.asn = None
+        try:
+            import maxminddb
+            self.city = maxminddb.open_database(f"{GEO}/city.mmdb")
+            self.asn = maxminddb.open_database(f"{GEO}/asn.mmdb")
+        except Exception:
+            pass
+
+    def lookup(self, ip):
+        if not self.city:
+            return None
+        try:
+            c = self.city.get(ip) or {}
+            a = (self.asn.get(ip) or {}) if self.asn else {}
+        except ValueError:
+            return None
+        loc = c.get("location") or {}
+        num = a.get("autonomous_system_number")
+        return {
+            "cc": (c.get("country") or {}).get("iso_code"),
+            "country": ((c.get("country") or {}).get("names") or {}).get("en"),
+            "city": ((c.get("city") or {}).get("names") or {}).get("en"),
+            "lat": loc.get("latitude"), "lon": loc.get("longitude"),
+            "asn": f"AS{num}" if num else None,
+            "org": a.get("autonomous_system_organization"),
+        }
+
+
+def geo_month(db):
+    row = db.execute("select value from meta where key='geo_month'").fetchone()
+    return row[0] if row else None
+
+
+def geo_fresh():
+    path = f"{GEO}/city.mmdb"
+    return os.path.exists(path) and time.time() - os.path.getmtime(path) <= GEO_MAX_AGE
+
+
+def geo_update(db, quiet=False):
+    """Fetch DB-IP Lite (CC BY 4.0) for this month, or last month early in the month."""
+    os.makedirs(GEO, exist_ok=True)
+    now = time.gmtime()
+    months = [time.strftime("%Y-%m", now)]
+    prev = time.gmtime(calendar.timegm((now.tm_year, now.tm_mon, 1, 0, 0, 0)) - 86400)
+    months.append(time.strftime("%Y-%m", prev))
+    for month in months:
+        try:
+            for name, remote in GEO_FILES.items():
+                url = f"https://download.db-ip.com/free/{remote}-{month}.mmdb.gz"
+                tmp = f"{GEO}/{name}.mmdb.part"
+                req = urllib.request.Request(url, headers={"User-Agent": "jail-records/1.0"})
+                with urllib.request.urlopen(req, timeout=120) as resp, open(tmp, "wb") as out:
+                    shutil.copyfileobj(gzip.GzipFile(fileobj=resp), out)
+            for name in GEO_FILES:
+                os.replace(f"{GEO}/{name}.mmdb.part", f"{GEO}/{name}.mmdb")
+            db.execute("insert or replace into meta values('geo_month', ?)", (month,))
+            db.commit()
+            if not quiet:
+                print(f"geo databases: DB-IP Lite {month}")
+            return True
+        except Exception as exc:  # not published yet, or no network: try the month before
+            if not quiet:
+                print(f"geo databases for {month}: {exc}", file=sys.stderr)
+    return False
+
+
+# ---------------------------------------------------------------- sync
+
+def sync(db):
+    now = int(time.time())
+    today = calendar.timegm(time.gmtime(now)[:3] + (0, 0, 0))
+    since = today - WINDOW_DAYS * 86400  # whole days only, so a day is never half counted
+
+    conns, accepted = read_ssh(since)
+    web, friends = read_web()
+    for ip in accepted:
+        db.execute("insert or ignore into trusted values(?, 'ssh login', ?)", (ip, now))
+    for ip in friends:
+        db.execute("insert or ignore into trusted values(?, 'valid token', ?)", (ip, now))
+    hidden = OWN | {r[0] for r in db.execute("select ip from trusted")}
+    for ip in hidden:
+        for table in ("sightings", "bookings", "offenders"):
+            db.execute(f"delete from {table} where ip=?", (ip,))
+
+    # sightings and hourly counts; a recount never lowers a figure already recorded
+    seen = {}
+    hours = collections.Counter()
+    for door, events in (("ssh", conns), ("web", web)):
+        for e in events:
+            if e["ip"] in hidden:
+                continue
+            hours[(door, e["ts"] // 3600 * 3600)] += 1
+            s = seen.setdefault((day_of(e["ts"]), door, e["ip"]),
+                                {"hits": 0, "a": collections.Counter(), "b": collections.Counter(),
+                                 "first": e["ts"], "last": e["ts"]})
+            s["hits"] += 1
+            s["first"], s["last"] = min(s["first"], e["ts"]), max(s["last"], e["ts"])
+            if door == "ssh":
+                if e["user"]:
+                    s["a"][e["user"]] += 1
+            else:
+                s["a"][e["req"]] += 1
+                s["b"][e["ua"]] += 1
+    for (day, door, ip), s in seen.items():
+        detail = {"users": s["a"].most_common(40)} if door == "ssh" else \
+            {"paths": s["a"].most_common(40), "uas": s["b"].most_common(5)}
+        db.execute("""insert into sightings values(?,?,?,?,?,?,?)
+                      on conflict(day, door, ip) do update set hits=excluded.hits, detail=excluded.detail,
+                          first=min(first, excluded.first), last=max(last, excluded.last)
+                      where excluded.hits >= sightings.hits""",
+                   (day, door, ip, s["hits"], json.dumps(detail), s["first"], s["last"]))
+    for (door, hour), n in hours.items():
+        db.execute("""insert into hourly values(?,?,?)
+                      on conflict(door, hour) do update set hits=max(hits, excluded.hits)""",
+                   (door, hour, n))
+
+    # bookings: fail2ban's latest ban per address, corrected by what is in force right now
+    try:
+        f2b = sqlite3.connect(f"file:{F2B_DB}?mode=ro", uri=True)
+        f2b.execute("select 1 from bips limit 1")
+    except sqlite3.Error as exc:
+        sys.exit(f"jail-records: cannot read fail2ban's database {F2B_DB} ({exc}). "
+                 "Is fail2ban installed and running, with its default dbfile?")
+    live = {}
+    for jail in JAILS:
+        live[jail] = live_bans(jail)
+        rows = {}
+        for ip, booked, sentence, ban_no, data in f2b.execute(
+                "select ip, timeofban, bantime, bancount, data from bips where jail=?", (jail,)):
+            try:
+                d = json.loads(data.decode() if isinstance(data, bytes) else data)
+            except (ValueError, AttributeError):
+                d = {}
+            evidence = ["".join(m) if isinstance(m, list) else str(m) for m in d.get("matches", [])]
+            rows[ip] = [booked, sentence, booked + sentence, ban_no, d.get("failures"),
+                        json.dumps([e[:300] for e in evidence[-6:]])]
+        for ip, (booked, sentence, release) in live[jail].items():
+            if ip in rows and rows[ip][0] == booked:
+                rows[ip][1:3] = [sentence, release]
+            elif ip not in rows:
+                rows[ip] = [booked, sentence, release, 1, None, "[]"]
+        for ip, (booked, sentence, release, ban_no, failures, evidence) in rows.items():
+            if ip in hidden:
+                continue
+            db.execute("""insert into bookings values(?,?,?,?,?,?,?,?,null)
+                          on conflict(jail, ip, booked_at) do update set sentence=excluded.sentence,
+                              release_at=excluded.release_at, ban_no=excluded.ban_no,
+                              failures=excluded.failures, evidence=excluded.evidence""",
+                       (jail, ip, booked, sentence, release, ban_no, failures, evidence))
+        # let out before time (a manual unban), or back in after a restart
+        for ip, booked in db.execute(
+                "select ip, max(booked_at) from bookings where jail=? group by ip", (jail,)).fetchall():
+            inside = ip in live[jail]
+            db.execute("""update bookings set released_early = case
+                              when ? then null
+                              when release_at > ? and released_early is null then ?
+                              else released_early end
+                          where jail=? and ip=? and booked_at=?""",
+                       (inside, now, now, jail, ip, booked))
+
+    # offenders: everyone with a booking or a sighting
+    db.execute("""insert into offenders(ip, first_seen, last_seen)
+                  select ip, min(t0), max(t1) from (
+                      select ip, first as t0, last as t1 from sightings
+                      union all select ip, booked_at, booked_at from bookings) group by ip
+                  on conflict(ip) do update set first_seen=min(first_seen, excluded.first_seen),
+                                                last_seen=max(last_seen, excluded.last_seen)""")
+
+    # Downloads are left to jail-records-geo.timer, so this can run without network access.
+    month = geo_month(db)
+    geo = Geo()
+    if geo.city and month:
+        for (ip,) in db.execute(
+                "select ip from offenders where geo_month is null or geo_month != ?", (month,)).fetchall():
+            g = geo.lookup(ip) or {}
+            db.execute("""update offenders set cc=?, country=?, city=?, lat=?, lon=?, asn=?, org=?,
+                          geo_month=? where ip=?""",
+                       (g.get("cc"), g.get("country"), g.get("city"), g.get("lat"), g.get("lon"),
+                        g.get("asn"), g.get("org"), month, ip))
+    db.execute("insert or replace into meta values('synced', ?)", (str(now),))
+    db.commit()
+    return live
+
+
+# ---------------------------------------------------------------- export
+
+def scrub(line):
+    """Evidence lines carry this machine's hostname and sometimes its address: show the name instead."""
+    line = re.sub(r"^(\S+) \S+ (sshd(?:-session)?\[\d+\]:)", rf"\1 {CFG['name']} \2", line)
+    for own in sorted(OWN, key=len, reverse=True):
+        if len(own) > 6 and own in line:
+            line = line.replace(own, CFG["name"])
+    host = socket.gethostname()
+    return re.sub(rf"\b{re.escape(host)}\b(?=[ .:\[])", CFG["name"], line) if len(host) > 7 else line
+
+
+def export(db, live):
+    """The JSON the pages are built from, as text. live: the bans sync() found."""
+    now = int(time.time())
+    since = calendar.timegm(time.gmtime(now)[:3] + (0, 0, 0)) - WINDOW_DAYS * 86400
+    since_day = day_of(since)
+
+    geo = {ip: {"cc": cc, "country": country, "city": city, "lat": lat, "lon": lon, "asn": asn, "org": org}
+           for ip, cc, country, city, lat, lon, asn, org in db.execute(
+               "select ip, cc, country, city, lat, lon, asn, org from offenders")}
+
+    records, state = [], {}
+    for jail, ip, booked, sentence, release, ban_no, failures, evidence, early, n in db.execute(
+            """select b.jail, b.ip, b.booked_at, b.sentence, b.release_at, b.ban_no, b.failures,
+                      b.evidence, b.released_early, c.n
+               from bookings b join (select jail, ip, max(booked_at) m, count(*) n
+                                     from bookings group by jail, ip) c
+                 on c.jail=b.jail and c.ip=b.ip and c.m=b.booked_at"""):
+        inside = ip in live.get(jail, {})
+        if jail not in JAILS:
+            continue
+        records.append({"ip": ip, "jail": jail, "banned_at": booked, "sentence": sentence,
+                        "release": release, "inside": inside, "bancount": ban_no,
+                        "failures": failures, "released_early": early,
+                        "evidence": [scrub(e) for e in json.loads(evidence or "[]")[-4:]]})
+        if inside or state.get(ip) != "inside":
+            state[ip] = "inside" if inside else "released"
+
+    per = {"ssh": {}, "web": {}}
+    for door, ip, hits, detail, first, last in db.execute(
+            "select door, ip, hits, detail, first, last from sightings where day >= ?", (since_day,)):
+        s = per[door].setdefault(ip, {"hits": 0, "a": collections.Counter(), "b": collections.Counter(),
+                                      "first": first, "last": last})
+        d = json.loads(detail or "{}")
+        s["hits"] += hits
+        s["first"], s["last"] = min(s["first"], first), max(s["last"], last)
+        for k, v in d.get("users", d.get("paths", [])):
+            s["a"][k] += v
+        for k, v in d.get("uas", []):
+            s["b"][k] += v
+
+    booked_ips = {r["ip"] for r in records}
+    loose_ssh = sorted((ip for ip in per["ssh"] if ip not in booked_ips),
+                       key=lambda ip: -per["ssh"][ip]["hits"])
+    loose_web = sorted((ip for ip in per["web"] if ip not in booked_ips),
+                       key=lambda ip: -per["web"][ip]["hits"])
+    keep = booked_ips | set(loose_ssh[:40]) | set(loose_web[:40])
+
+    def pack(counter, n):
+        return [[k, v] for k, v in counter.most_common(n)]
+
+    origins, countries, networks = {}, {}, {}
+    for ip in booked_ips | set(per["ssh"]) | set(per["web"]):
+        g = geo.get(ip) or {}
+        st = state.get(ip, "loose")
+        hits = per["ssh"].get(ip, {}).get("hits", 0) + per["web"].get(ip, {}).get("hits", 0)
+        c = countries.setdefault(g.get("cc") or "??", {"cc": g.get("cc"), "country": g.get("country") or "Unknown",
+                                                         "inside": 0, "released": 0, "loose": 0, "hits": 0})
+        c[st] += 1
+        c["hits"] += hits
+        if g.get("org"):
+            n = networks.setdefault(g["org"], {"org": g["org"], "asn": g.get("asn"), "cc": collections.Counter(),
+                                               "inside": 0, "released": 0, "loose": 0, "hits": 0})
+            n[st] += 1
+            n["hits"] += hits
+            n["cc"][g.get("cc")] += 1
+        if g.get("lat") is None:
+            continue
+        key = (round(g["lat"], 1), round(g["lon"], 1))
+        o = origins.setdefault(key, {"lat": key[0], "lon": key[1], "city": g.get("city"), "cc": g.get("cc"),
+                                     "country": g.get("country"), "inside": 0, "released": 0, "loose": 0, "hits": 0})
+        o[st] += 1
+        o["hits"] += hits
+    for n in networks.values():
+        n["cc"] = n["cc"].most_common(1)[0][0]
+
+    started = run("systemctl", "show", "fail2ban", "-p", "ActiveEnterTimestamp", "--value").strip()
+    try:
+        f2b_started = calendar.timegm(time.strptime(started, "%a %Y-%m-%d %H:%M:%S %Z"))
+    except ValueError:
+        f2b_started = None
+
+    def timeline(door):
+        got = dict(db.execute("select hour, hits from hourly where door=? and hour>=?", (door, since)))
+        return [[h, got.get(h, 0)] for h in range(since, now + 1, 3600)]
+
+    meta = dict(db.execute("select key, value from meta"))
+    return json.dumps({
+        "generated": now, "host": CFG["name"], "window_days": WINDOW_DAYS, "window_start": since,
+        "f2b_started": f2b_started,
+        "records_since": db.execute("select min(booked_at) from bookings").fetchone()[0],
+        "office_opened": int(meta.get("created", now)),
+        "geo_source": f"DB-IP Lite {meta.get('geo_month', '')}".strip(),
+        "home": Geo().lookup(public_address() or ""),
+        "jails": {j: {**jail_settings(j), "door": JAILS[j], "wing": (CFG["jails"][j] or {}).get("wing", j[:1].upper()),
+                      "label": (CFG["jails"][j] or {}).get("label", j)} for j in JAILS},
+        "records": records,
+        "ssh": {ip: {"attempts": s["hits"], "users": pack(s["a"], 8), "distinct_users": len(s["a"]),
+                     "first": s["first"], "last": s["last"]}
+                for ip, s in per["ssh"].items() if ip in keep},
+        "web": {ip: {"requests": s["hits"], "paths": pack(s["a"], 10), "distinct_paths": len(s["a"]),
+                     "uas": pack(s["b"], 2), "first": s["first"], "last": s["last"]}
+                for ip, s in per["web"].items() if ip in keep},
+        "geo": {ip: geo.get(ip) for ip in keep},
+        "origins": sorted(origins.values(), key=lambda o: -(o["inside"] * 1000 + o["released"] * 100 + o["loose"])),
+        "countries": sorted(countries.values(), key=lambda c: -(c["inside"] + c["released"] + c["loose"])),
+        "networks": sorted(networks.values(),
+                           key=lambda n: (-(n["inside"] + n["released"]), -n["loose"]))[:12],
+        "totals": {
+            "ssh_attempts": sum(s["hits"] for s in per["ssh"].values()),
+            "ssh_addresses": len(per["ssh"]), "ssh_loose": len(loose_ssh),
+            "web_requests": sum(s["hits"] for s in per["web"].values()),
+            "web_addresses": len(per["web"]), "web_loose": len(loose_web),
+            "top_users": pack(sum((s["a"] for s in per["ssh"].values()), collections.Counter()), 12),
+            "top_paths": pack(sum((s["a"] for s in per["web"].values()), collections.Counter()), 12),
+        },
+        "timeline": {"ssh": timeline("ssh"), "web": timeline("web")},
+    }, separators=(",", ":"))
+
+
+def write_snapshot(text, path=EXPORT):
+    """Replace the snapshot in one step, readable by root and the directory's group.
+
+    install.sh makes the directory setgid jail-export, so the file takes that group
+    without a chown."""
+    folder = os.path.dirname(path)
+    os.makedirs(folder, mode=0o750, exist_ok=True)
+    tmp = f"{path}.tmp"
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640), "w") as fh:
+        fh.write(text + "\n")
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, path)
+
+
+def print_snapshot(path=EXPORT):
+    """What `jail-records export` does: copy the snapshot to stdout, nothing else."""
+    try:
+        with open(path) as fh:
+            sys.stdout.write(fh.read())
+    except FileNotFoundError:
+        sys.exit(f"jail-records: no {path} yet; it is written by 'jail-records sync'")
+    except PermissionError:
+        sys.exit(f"jail-records: cannot read {path}; run as root or as a member of the jail-export group")
+
+
+def stats(db):
+    for label, sql in (
+            ("offenders on file", "select count(*) from offenders"),
+            ("bookings", "select count(*) from bookings"),
+            ("repeat offenders", "select count(distinct ip) from bookings where ban_no > 1"),
+            ("sighting rows", "select count(*) from sightings"),
+            ("trusted addresses", "select count(*) from trusted"),
+            ("countries", "select count(distinct cc) from offenders where cc is not null")):
+        print(f"{label:20} {db.execute(sql).fetchone()[0]}")
+    meta = dict(db.execute("select key, value from meta"))
+    print(f"{'geo databases':20} DB-IP Lite {meta.get('geo_month', 'missing')}")
+    print(f"{'last sync':20} {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(int(meta.get('synced', 0))))}")
+
+
+def is_trusted(address):
+    """True if this address is one of ours: fail2ban asks before counting a failure.
+
+    Ours means one of our servers, an address already on the trusted list for an
+    SSH login, or one that logged in over SSH in the last day (so a new home or
+    travel address counts from its first good login, not from the next sync).
+    Reads only; any doubt or error means not trusted."""
+    import ipaddress
+    try:
+        address = str(ipaddress.ip_address(address))
+    except ValueError:
+        return False
+    if address in OWN:
+        return True
+    try:
+        db = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=2)
+        if db.execute("select 1 from trusted where ip = ? and why = 'ssh login'", (address,)).fetchone():
+            return True
+    except sqlite3.Error:
+        pass
+    try:
+        found = subprocess.run(
+            ["journalctl", "-u", "ssh", "--since", "-24h", "--no-pager", "-o", "cat", "-q",
+             "--grep", r"^Accepted \S+ for \S+ from " + re.escape(address) + " port "],
+            capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return bool(found.strip())
+
+
+if __name__ == "__main__":
+    command, args = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ("", [])
+    if command == "is-trusted" and len(args) == 1 and os.geteuid() == 0:
+        sys.exit(0 if is_trusted(args[0]) else 1)
+    if command == "export" and not args:
+        print_snapshot()
+        sys.exit(0)
+    if command not in ("sync", "geo-update", "stats") or args not in ([], ["--force"]) or \
+            (args and command != "geo-update"):
+        sys.exit(__doc__)
+    if os.geteuid() != 0:
+        sys.exit("jail-records: run as root")
+    database = connect()
+    if command == "sync":
+        write_snapshot(export(database, sync(database)))
+    elif command == "geo-update":
+        if args or not geo_fresh():
+            sys.exit(0 if geo_update(database) else 1)
+        print(f"geo databases: DB-IP Lite {geo_month(database)}, less than 35 days old")
+    else:
+        stats(database)

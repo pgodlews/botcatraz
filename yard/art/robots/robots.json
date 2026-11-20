@@ -1,0 +1,323 @@
+{
+  "frame": [
+    32,
+    32
+  ],
+  "anchor": [
+    16,
+    28
+  ],
+  "rows": [
+    {
+      "name": "idle_down",
+      "row": 0,
+      "frames": 4,
+      "fps": 3,
+      "facing": "viewer"
+    },
+    {
+      "name": "idle_side",
+      "row": 1,
+      "frames": 4,
+      "fps": 3,
+      "facing": "right"
+    },
+    {
+      "name": "idle_up",
+      "row": 2,
+      "frames": 2,
+      "fps": 3,
+      "facing": "away"
+    },
+    {
+      "name": "walk_down",
+      "row": 3,
+      "frames": 6,
+      "fps": 9,
+      "facing": "viewer"
+    },
+    {
+      "name": "walk_side",
+      "row": 4,
+      "frames": 6,
+      "fps": 9,
+      "facing": "right"
+    },
+    {
+      "name": "walk_up",
+      "row": 5,
+      "frames": 6,
+      "fps": 9,
+      "facing": "away"
+    },
+    {
+      "name": "sit",
+      "row": 6,
+      "frames": 4,
+      "fps": 2,
+      "facing": "viewer"
+    },
+    {
+      "name": "press",
+      "row": 7,
+      "frames": 4,
+      "fps": 5,
+      "facing": "lying, head to the left"
+    },
+    {
+      "name": "curl",
+      "row": 8,
+      "frames": 4,
+      "fps": 5,
+      "facing": "viewer"
+    },
+    {
+      "name": "dribble",
+      "row": 9,
+      "frames": 4,
+      "fps": 7,
+      "facing": "right"
+    },
+    {
+      "name": "shoot",
+      "row": 10,
+      "frames": 4,
+      "fps": 5,
+      "facing": "right"
+    },
+    {
+      "name": "smoke",
+      "row": 11,
+      "frames": 6,
+      "fps": 3,
+      "facing": "right"
+    },
+    {
+      "name": "drink",
+      "row": 12,
+      "frames": 6,
+      "fps": 3,
+      "facing": "right"
+    },
+    {
+      "name": "wave",
+      "row": 13,
+      "frames": 4,
+      "fps": 5,
+      "facing": "viewer"
+    },
+    {
+      "name": "bump",
+      "row": 14,
+      "frames": 4,
+      "fps": 5,
+      "facing": "right"
+    },
+    {
+      "name": "talk",
+      "row": 15,
+      "frames": 2,
+      "fps": 3,
+      "facing": "right"
+    },
+    {
+      "name": "sit_back",
+      "row": 16,
+      "frames": 4,
+      "fps": 2,
+      "facing": "away"
+    }
+  ],
+  "variants": [
+    {
+      "file": "robot-0.png",
+      "head": "box",
+      "antenna": "coil spring",
+      "eyes": "red visor slit"
+    },
+    {
+      "file": "robot-1.png",
+      "head": "tall box",
+      "antenna": "single rod, red ball tip",
+      "eyes": "one big round red lens"
+    },
+    {
+      "file": "robot-2.png",
+      "head": "wide box",
+      "antenna": "twin rods, red tips",
+      "eyes": "two red square eyes, angry brow line"
+    },
+    {
+      "file": "robot-3.png",
+      "head": "box",
+      "antenna": "twin rods, amber tips",
+      "eyes": "two amber square eyes"
+    },
+    {
+      "file": "robot-4.png",
+      "head": "box",
+      "antenna": "curly wire",
+      "eyes": "amber visor bar"
+    },
+    {
+      "file": "robot-5.png",
+      "head": "round",
+      "antenna": "coil spring",
+      "eyes": "one big amber lens"
+    },
+    {
+      "file": "robot-6.png",
+      "head": "dome",
+      "antenna": "single rod",
+      "eyes": "cyan visor"
+    },
+    {
+      "file": "robot-7.png",
+      "head": "wide box with ear bolts",
+      "antenna": "none",
+      "eyes": "two green round eyes"
+    },
+    {
+      "file": "robot-8.png",
+      "head": "television",
+      "antenna": "rabbit ears",
+      "eyes": "two cyan screen eyes"
+    },
+    {
+      "file": "robot-9.png",
+      "head": "upturned bucket, stocky",
+      "antenna": "none",
+      "eyes": "one amber slot eye"
+    },
+    {
+      "file": "robot-10.png",
+      "head": "glass bulb, slim tall",
+      "antenna": "none",
+      "eyes": "glowing amber filament"
+    },
+    {
+      "file": "robot-11.png",
+      "head": "toaster, two top slots",
+      "antenna": "none",
+      "eyes": "two red LED eyes"
+    },
+    {
+      "file": "robot-12.png",
+      "head": "hexagonal nut, rust accents",
+      "antenna": "none",
+      "eyes": "one off-centre green lens"
+    },
+    {
+      "file": "robot-13.png",
+      "head": "diving helmet",
+      "antenna": "none",
+      "eyes": "round cyan porthole"
+    },
+    {
+      "file": "robot-14.png",
+      "head": "small head, barrel body, stocky",
+      "antenna": "none",
+      "eyes": "two green eyes"
+    },
+    {
+      "file": "robot-15.png",
+      "head": "binocular head, periscope neck, slim",
+      "antenna": "none",
+      "eyes": "two red eyes"
+    },
+    {
+      "file": "robot-16.png",
+      "head": "padlock with U-shackle",
+      "antenna": "none",
+      "eyes": "amber keyhole"
+    },
+    {
+      "file": "robot-17.png",
+      "head": "traffic signal, slim",
+      "antenna": "none",
+      "eyes": "red, amber and green lenses"
+    },
+    {
+      "file": "robot-18.png",
+      "head": "reel-to-reel tape deck",
+      "antenna": "none",
+      "eyes": "cyan tape window"
+    },
+    {
+      "file": "robot-19.png",
+      "head": "flash camera",
+      "antenna": "none",
+      "eyes": "cyan lens barrel"
+    },
+    {
+      "file": "robot-20.png",
+      "head": "safety cone, white band",
+      "antenna": "none",
+      "eyes": "two green eyes"
+    },
+    {
+      "file": "robot-21.png",
+      "head": "parking meter, slim",
+      "antenna": "none",
+      "eyes": "red expired flag window"
+    },
+    {
+      "file": "guard.png",
+      "head": "box with peaked cap",
+      "antenna": "none",
+      "eyes": "two cyan square eyes"
+    }
+  ],
+  "palette": [
+    "#161c19",
+    "#1a1410",
+    "#1f3558",
+    "#2a78d6",
+    "#2b302e",
+    "#2d4a7a",
+    "#3a403d",
+    "#4b5552",
+    "#5fd0e0",
+    "#6f7a77",
+    "#7ddc6a",
+    "#9aa3a0",
+    "#a0522d",
+    "#a9afa5",
+    "#b84a1c",
+    "#b9beb4",
+    "#c3cac6",
+    "#c7622a",
+    "#de632a",
+    "#f08a4b",
+    "#f3f1e7",
+    "#ff4b3e",
+    "#ffb020"
+  ],
+  "guard_rows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    13
+  ],
+  "press_bench": {
+    "top_rect": [
+      2,
+      22,
+      28,
+      4
+    ],
+    "centre": [
+      16,
+      24
+    ],
+    "baseline": 28,
+    "anchor": [
+      16,
+      28
+    ],
+    "note": "Hide the empty bench prop during press. Bench legs at x=5..6 and 25..26, y=25..28."
+  }
+}

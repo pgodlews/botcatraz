@@ -1,0 +1,21 @@
+# built pages and fetched exports (these hold real addresses once you build from a server)
+out/
+www/
+# your own settings
+servers.json
+sites/
+install.conf
+# by-products of the art generators
+preview/
+REPORT.md
+self-check.txt
+palette.json
+bench-reference.png
+__pycache__/
+.DS_Store
+# local tooling
+.claude/
+
+# tests and CI
+node_modules/
+units.txt

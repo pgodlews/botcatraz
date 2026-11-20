@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Build and unit tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile every Python file
+        run: python -m py_compile build.py server/jail-records sample/make_sample.py yard/art/*/make_*.py docs/make_art_page.py tests/*.py
+      - name: Unit tests (sample build, web log parser)
+        run: python -m unittest discover -s tests -v
+
+  shell:
+    name: Shell scripts and unit files
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: shellcheck
+        run: shellcheck ./*.sh server/install.sh webhost/install.sh tests/*.sh
+      - name: Render the systemd units
+        run: |
+          bash webhost/install.sh --print --user runner --unit jail-pages --port 8850 --every 5 | tee units.txt
+          if grep -n '@[A-Z]*@' units.txt; then echo "unfilled placeholders"; exit 1; fi
+
+  fail2ban:
+    name: fail2ban filters
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install fail2ban
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fail2ban
+          sudo systemctl stop fail2ban || true
+          fail2ban-regex --version
+      - name: Run the filters over the test logs
+        run: tests/check_fail2ban.sh /etc/fail2ban
+
+  art:
+    # The committed PNGs were written on macOS. zlib on Linux compresses them
+    # differently, so there the PNGs are compared by their pixels.
+    name: Art generators reproduce the committed art (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            mode: ""
+          - os: ubuntu-24.04
+            mode: --pixels
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install Pillow==11.3.0
+      - run: tests/check_art.sh ${{ matrix.mode }}
+
+  pages:
+    name: Pages in a browser
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Build from the sample data
+        run: |
+          ./build.py --sample
+          node --check tests/check_pages.js
+          node --check docs/take_screenshots.js
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Open the front page, a cells page and a yard
+        run: node tests/check_pages.js www

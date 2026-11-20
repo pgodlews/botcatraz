@@ -1,0 +1,517 @@
+<title>{{NAME}} Jail · Botcatraz</title>
+<script>/* the saved Lights out / Day shift choice, applied before the page is drawn */try { const t = localStorage.getItem("lights") || localStorage.getItem("yard-lights"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Stencil+One&display=swap">
+<style>
+/* Layout: a headcount board, then cell blocks (one barred cell per prisoner, each opening
+   into a rap sheet), then where they came from and what they tried. Light = day shift,
+   dark = lights out. */
+:root {
+  --wall: #dfe4da;        /* painted cinder block */
+  --wall-2: #d1d8cb;
+  --cell: #eef1ea;        /* cell interior and chart surface */
+  --ink: #1b231f;
+  --ink-2: #48554d;
+  --ink-3: #6b7870;
+  --rule: #b8c1b4;
+  --steel: #66726b;       /* bars */
+  --steel-hi: #9aa69f;
+  --jumpsuit: #d9611a;    /* inside */
+  --jumpsuit-deep: #a8460d;
+  --released: #2a78d6;
+  --loose: #8d978f;       /* never caught: a neutral, not a series colour */
+  --placard: #1f2623;
+  --placard-ink: #f3f5ef;
+  --metal-1: #aab4ad; --metal-2: #8e9c9b; --metal-3: #b9b4a3; --metal-4: #9aa7b6;
+  --led-1: #ffb21f; --led-2: #37c8e6; --led-3: #ff5b4d;
+  --glow: 0px;
+  --display: "Saira Stencil One", "Arial Narrow", Impact, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wall: #131917; --wall-2: #0e1311; --cell: #1c2420; --ink: #e4eae3; --ink-2: #aab6ad;
+    --ink-3: #86938a; --rule: #33403a; --steel: #7c8981; --steel-hi: #a9b5ad;
+    --jumpsuit: #de632a; --jumpsuit-deep: #f08a52; --released: #4a8fe0; --loose: #6d7972;
+    --placard: #0b0f0d; --placard-ink: #eef2ea;
+    --metal-1: #7d8882; --metal-2: #687675; --metal-3: #8b8676; --metal-4: #6f7c8b;
+    --glow: 4px; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --wall: #131917; --wall-2: #0e1311; --cell: #1c2420; --ink: #e4eae3; --ink-2: #aab6ad;
+  --ink-3: #86938a; --rule: #33403a; --steel: #7c8981; --steel-hi: #a9b5ad;
+  --jumpsuit: #de632a; --jumpsuit-deep: #f08a52; --released: #4a8fe0; --loose: #6d7972;
+  --placard: #0b0f0d; --placard-ink: #eef2ea;
+  --metal-1: #7d8882; --metal-2: #687675; --metal-3: #8b8676; --metal-4: #6f7c8b;
+  --glow: 4px; color-scheme: dark;
+}
+
+body { background: var(--wall); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 44px; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(44px, 9vw, 84px); line-height: .95; letter-spacing: .02em; text-wrap: balance; }
+h2 { font-family: var(--display); font-weight: 400; font-size: 26px; letter-spacing: .04em; line-height: 1.1; }
+h3 { font-size: 15px; font-weight: 600; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.lede { max-width: 62ch; color: var(--ink-2); font-size: 16px; }
+.note { color: var(--ink-2); font-size: 13.5px; max-width: 72ch; }
+.mono { font-family: var(--mono); }
+.num { font-variant-numeric: tabular-nums; }
+section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.head { display: flex; flex-direction: column; gap: 14px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lights { font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); background: var(--cell);
+  border: 2px solid var(--steel); padding: 6px 11px; cursor: pointer; }
+.lights:hover { border-color: var(--jumpsuit); }
+.lights:focus-visible { outline: 2px solid var(--jumpsuit); outline-offset: 2px; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+.sec-head .count { font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
+
+/* headcount board */
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border: 2px solid var(--ink); background: var(--cell); }
+.board div { padding: 14px 16px; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 2px; }
+.board b { font-family: var(--display); font-weight: 400; font-size: 44px; line-height: 1; font-variant-numeric: tabular-nums; }
+.board .in b { color: var(--jumpsuit-deep); }
+.board span { font-size: 13px; color: var(--ink-2); }
+
+/* house rules */
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.rule { border-left: 6px solid var(--steel); padding: 4px 0 4px 14px; display: flex; flex-direction: column; gap: 2px; }
+.rule .wing { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.rule p { font-size: 14.5px; }
+
+/* cells */
+.block { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+.cell { background: var(--cell); border: 2px solid var(--steel); display: flex; flex-direction: column; min-width: 0; }
+.door { all: unset; display: block; position: relative; cursor: pointer; overflow: hidden; border-bottom: 2px solid var(--steel); background: var(--wall-2); }
+.door:focus-visible { outline: 3px solid var(--released); outline-offset: 2px; }
+.door svg { display: block; width: 100%; height: auto; }
+.bars { position: absolute; inset: 0; pointer-events: none; transition: transform .45s cubic-bezier(.6, 0, .2, 1);
+  background:
+    linear-gradient(var(--steel), var(--steel)) 0 5% / 100% 5px no-repeat,
+    repeating-linear-gradient(90deg, transparent 0 calc(12.5% - 3px), var(--steel-hi) calc(12.5% - 3px) calc(12.5% - 1.5px),
+      var(--steel) calc(12.5% - 1.5px) calc(12.5% + 3px), transparent calc(12.5% + 3px) 25%); }
+.cell.open .bars { transform: translateX(-104%); }
+@media (prefers-reduced-motion: no-preference) {
+  .cell .bars { animation: lockdown .7s cubic-bezier(.6, 0, .2, 1) backwards; animation-delay: calc(var(--i, 0) * 45ms); }
+  @keyframes lockdown { from { transform: translateX(-104%); } }
+}
+.plate { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ip { font-family: var(--mono); font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; line-height: 1.3; }
+.from { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; line-height: 1.35; }
+.tag { align-self: flex-start; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border: 1.5px solid var(--ink-3); color: var(--ink-2); }
+.tag.repeat { border-color: var(--jumpsuit-deep); color: var(--jumpsuit-deep); }
+.term { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--ink-2); }
+.term .track { height: 6px; background: var(--wall-2); border: 1px solid var(--rule); }
+.term .track i { display: block; height: 100%; background: var(--jumpsuit); }
+.cell.open { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(170px, 250px) minmax(0, 1fr); grid-template-rows: auto 1fr; }
+.cell.open .door { grid-column: 1; grid-row: 1; }
+.cell.open .plate { grid-column: 1; grid-row: 2; }
+.sheet { grid-column: 2; grid-row: 1 / span 2; border-left: 2px solid var(--steel); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sheet[hidden] { display: none; }
+.lede a { color: var(--jumpsuit-deep); font-weight: 600; }
+.sheet h3 { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); font-weight: 500; }
+.sheet-top { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: flex-start; }
+.sheet-top .facts { flex: 1 1 280px; }
+.profile { flex: 0 0 150px; background: var(--wall-2); border: 2px solid var(--steel); }
+.profile img { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.ruler { stroke: var(--rule); stroke-width: 1; }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 18px; margin: 0; }
+.facts div { display: flex; flex-direction: column; min-width: 0; }
+.facts dt { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.facts dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--mono); font-size: 12px; padding: 2px 7px; background: var(--wall-2); border: 1px solid var(--rule); overflow-wrap: anywhere; }
+.chip b { font-weight: 500; color: var(--ink-3); margin-left: 6px; }
+.evidence { font-family: var(--mono); font-size: 11.5px; line-height: 1.45; background: var(--wall-2); border: 1px solid var(--rule); padding: 8px 10px; overflow-x: auto; white-space: pre; margin: 0; color: var(--ink-2); }
+@media (max-width: 620px) {
+  .cell.open { display: flex; }
+  .sheet { border-left: 0; border-top: 2px solid var(--steel); }
+  .block { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+}
+/* mugshot parts */
+.m1 { fill: var(--metal-1); } .m2 { fill: var(--metal-2); } .m3 { fill: var(--metal-3); } .m4 { fill: var(--metal-4); }
+.l1 { fill: var(--led-1); } .l2 { fill: var(--led-2); } .l3 { fill: var(--led-3); }
+.led { filter: drop-shadow(0 0 var(--glow) currentColor); }
+.l1.led { color: var(--led-1); } .l2.led { color: var(--led-2); } .l3.led { color: var(--led-3); }
+.suit { fill: var(--jumpsuit); } .suit-line { fill: none; stroke: var(--jumpsuit-deep); stroke-width: 2; }
+.dark { fill: var(--placard); } .outline { stroke: var(--ink); stroke-width: 1.6; }
+.stem { stroke: var(--ink); stroke-width: 2; fill: none; stroke-linecap: round; }
+.tally { stroke: var(--ink-3); stroke-width: 1.6; stroke-linecap: round; fill: none; }
+.pl { fill: var(--placard); } .pl-t { fill: var(--placard-ink); font-family: var(--mono); }
+
+/* tables */
+.scroll { overflow-x: auto; border: 2px solid var(--steel); background: var(--cell); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th { text-align: left; font-family: var(--mono); font-weight: 500; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); padding: 9px 12px; border-bottom: 2px solid var(--steel); white-space: nowrap; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td .ip { font-size: 13px; }
+td small { color: var(--ink-3); font-size: 12px; display: block; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+.dot.inside { background: var(--jumpsuit); } .dot.released { background: var(--released); } .dot.loose { background: var(--loose); }
+.inbar { display: block; height: 8px; background: var(--loose); border-radius: 0 4px 4px 0; min-width: 2px; }
+
+/* map and charts */
+.panel { background: var(--cell); border: 2px solid var(--steel); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); }
+.mapscroll { overflow-x: auto; }
+.mapscroll svg { display: block; width: 100%; min-width: 620px; height: auto; }
+.land { fill: var(--wall-2); stroke: var(--rule); stroke-width: .6; }
+.o-inside { fill: var(--jumpsuit); } .o-released { fill: var(--released); } .o-loose { fill: var(--loose); }
+.origin { stroke: var(--cell); stroke-width: 1.4; }
+.route { fill: none; stroke: var(--jumpsuit); stroke-width: 1; opacity: .45; }
+.home { fill: var(--ink); } .home-t { fill: var(--ink); font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+.chart svg { display: block; width: 100%; height: auto; }
+.axis { fill: var(--ink-3); font-family: var(--mono); font-size: 11px; }
+.grid { stroke: var(--rule); stroke-width: 1; }
+.bar { fill: var(--steel); } .hit { fill: transparent; } .hit:hover + .bar, .bar.on { fill: var(--jumpsuit); }
+.rank { display: grid; grid-template-columns: minmax(0, auto) minmax(40px, 1fr) auto; gap: 6px 10px; align-items: center; font-size: 13px; }
+.rank .k { font-family: var(--mono); overflow-wrap: anywhere; max-width: 22ch; }
+.rank .b { height: 10px; background: var(--steel); border-radius: 0 4px 4px 0; min-width: 2px; }
+.rank .v { font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-2); }
+#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--placard); color: var(--placard-ink); font-size: 12.5px; line-height: 1.4; padding: 6px 9px; max-width: 260px; white-space: pre-line; }
+footer { font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 14px; display: flex; flex-direction: column; gap: 4px; }
+footer a { color: inherit; }
+</style>
+
+<div class="wrap">
+  <header class="head">
+    <div class="topbar"><p class="eyebrow" id="rollcall"></p><button class="lights" id="lights" type="button">Lights out</button></div>
+    <h1>{{NAME}} Jail</h1>
+    <p class="lede">Every address fail2ban has locked out of this server, drawn as the bots they are. Open a cell to read the rap sheet.</p>
+    <!--NAV-->
+    <div class="board" id="board"></div>
+    <div class="rules" id="rules"></div>
+  </header>
+
+  <div id="wings" style="display:flex;flex-direction:column;gap:44px"></div>
+
+  <section>
+    <div class="sec-head"><h2>Where they come from</h2><span class="count" id="map-count"></span></div>
+    <div class="panel">
+      <div class="legend">
+        <span><i class="dot inside"></i>Inside now</span>
+        <span><i class="dot released"></i>Released</span>
+        <span><i class="dot loose"></i>Knocked, never jailed</span>
+      </div>
+      <div class="mapscroll" id="map"></div>
+    </div>
+    <div class="split">
+      <div><h3 style="margin-bottom:8px">By country</h3><div class="scroll" id="countries"></div></div>
+      <div><h3 style="margin-bottom:8px">By network (the gangs)</h3><div class="scroll" id="networks"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Knocks on the SSH door</h2><span class="count" id="tl-count"></span></div>
+    <div class="panel chart"><div id="timeline"></div></div>
+    <div class="split">
+      <div class="panel"><h3>Names they tried at the SSH door</h3><div class="rank" id="users"></div></div>
+      <div class="panel"><h3 id="paths-title">What they asked the web server for</h3><div class="rank" id="paths"></div><p class="note" id="web-note"></p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Still at large</h2><span class="count" id="loose-count"></span></div>
+    <p class="note" id="loose-note"></p>
+    <div class="scroll" id="loose"></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Released</h2><span class="count" id="rel-count"></span></div>
+    <div class="scroll" id="released"></div>
+  </section>
+
+  <footer>
+    <span id="foot-src"></span>
+    <span>Countries, cities and networks: <a href="https://db-ip.com">IP Geolocation by DB-IP</a>, looked up in a local copy on the server. City is approximate.</span>
+    <span>World outline: Natural Earth. All times UTC. This is a snapshot: rebuild it for a new roll call.</span>
+    <span>Drawn by Botcatraz.</span>
+  </footer>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+const D = /*__DATA__*/null;
+const MUGS = /*__MUGS__*/null;   // pixel-art booking photos of the yard's robot types, or null for the drawn stand-in
+const LAND = /*__LAND__*/null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const n = v => Number(v || 0).toLocaleString("en-GB");
+const NOW = D.generated;
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const p2 = v => String(v).padStart(2, "0");
+function date(ts, withTime = true) {
+  if (!ts) return "unknown";
+  const d = new Date(ts * 1000);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}` + (withTime ? `, ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}` : "");
+}
+function span(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  if (d) return h ? `${d} d ${h} h` : `${d} d`;
+  if (h) return m && h < 6 ? `${h} h ${m} min` : `${h} h`;
+  return `${Math.max(1, m)} min`;
+}
+const term = sec => sec % 86400 === 0 ? `${sec / 86400} day${sec === 86400 ? "" : "s"}` : span(sec);
+const ordinal = k => k + (["th", "st", "nd", "rd"][(k % 100 - 20) % 10] || ["th", "st", "nd", "rd"][k % 100] || "th");
+const flag = cc => cc && /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1f1a5 + c.charCodeAt(0))) : "";
+const geo = ip => D.geo[ip] || {};
+const place = g => [g.city, g.country].filter(Boolean).join(", ") || "Origin unknown";
+const WING = Object.fromEntries(Object.entries(D.jails).map(([j, s]) => { const letter = s.wing || j[0].toUpperCase(); return [j, { letter, name: `${letter} wing`, what: s.label || j, door: s.door }]; }));
+const WEB = Object.values(WING).find(w => w.door === "web");
+
+/* deterministic bot portraits */
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const booking = r => `${WING[r.jail].letter}-${hash(r.ip) % 9000 + 1000}`;
+function tally(count) {
+  let s = "";
+  const shown = Math.min(count, 40);
+  for (let i = 0; i < shown; i++) {
+    const g = Math.floor(i / 5), k = i % 5, gx = 12 + (g % 4) * 24, gy = 12 + Math.floor(g / 4) * 20;
+    s += k < 4 ? `<path class="tally" d="M${gx + k * 4.5} ${gy}v13"/>` : `<path class="tally" d="M${gx - 3} ${gy + 11}l19.5 -9"/>`;
+  }
+  return s;
+}
+const mugType = r => hash(r.ip) % MUGS.front.length;   // the same pick as the yard makes, so it is the same robot
+function mugPhoto(r) {
+  const g = geo(r.ip), k = 200 / MUGS.size[0], [px, py, pw, ph] = MUGS.placard.map(v => v * k), cx = px + pw / 2;
+  let s = `<rect width="200" height="170" fill="var(--wall-2)"/>`;
+  for (let y = 26; y < 120; y += 24) s += `<path class="ruler" d="M0 ${y}H200"/>`;
+  s += tally(r.bancount) + `<image href="${MUGS.front[mugType(r)]}" width="200" height="${MUGS.size[1] * k}" style="image-rendering:pixelated"/>`;
+  s += `<text class="pl-t" x="${cx}" y="${py + ph * .27}" text-anchor="middle" font-size="6.2" letter-spacing="1.2">${esc(D.host.toUpperCase())} JAIL</text>`;
+  s += `<text class="pl-t" x="${cx}" y="${py + ph * .64}" text-anchor="middle" font-size="12.5" font-weight="600">${booking(r)}</text>`;
+  s += `<text class="pl-t" x="${cx}" y="${py + ph * .88}" text-anchor="middle" font-size="6.2" letter-spacing="1">${esc((g.cc || "??") + " · " + date(r.banned_at, false).toUpperCase())}</text>`;
+  return `<svg viewBox="0 0 200 170" role="img" aria-label="Booking photo of prisoner ${booking(r)}">${s}</svg>`;
+}
+function mug(r) {
+  if (MUGS) return mugPhoto(r);
+  const R = rng(hash(r.ip)), pick = a => a[Math.floor(R() * a.length)];
+  const metal = pick(["m1", "m2", "m3", "m4"]), led = pick(["l1", "l2", "l3"]);
+  const [w, h, rx] = pick([[62, 52, 9], [60, 56, 26], [50, 62, 10], [76, 44, 12], [66, 50, 3]]);
+  const cx = 100, bottom = 102, top = bottom - h, left = cx - w / 2;
+  const eyeY = top + h * .42, gap = w * .23, mouthY = top + h * .76;
+  let s = `<rect width="200" height="170" fill="var(--wall-2)"/>` + tally(r.bancount);
+  s += `<path class="suit" d="M36 170C36 130 60 114 84 112h32c24 2 48 18 48 58z"/><path class="suit-line" d="M86 112l14 13 14-13"/>`;
+  s += `<rect class="${metal} outline" x="91" y="98" width="18" height="16"/>`;
+  const ant = pick(["one", "two", "none", "coil"]);
+  if (ant === "one") s += `<path class="stem" d="M${cx} ${top}v-13"/><circle class="${led} led" cx="${cx}" cy="${top - 16}" r="3.6"/>`;
+  if (ant === "two") s += `<path class="stem" d="M${cx - 13} ${top}l-4 -12M${cx + 13} ${top}l4 -12"/><circle class="${led} led" cx="${cx - 18}" cy="${top - 14}" r="2.8"/><circle class="${led} led" cx="${cx + 18}" cy="${top - 14}" r="2.8"/>`;
+  if (ant === "coil") s += `<path class="stem" d="M${cx} ${top}q-7 -3 0 -6t0 -6t0 -6"/>`;
+  if (R() < .6) s += `<rect class="${metal} outline" x="${left - 6}" y="${eyeY - 4}" width="6" height="15"/><rect class="${metal} outline" x="${left + w}" y="${eyeY - 4}" width="6" height="15"/>`;
+  s += `<rect class="${metal} outline" x="${left}" y="${top}" width="${w}" height="${h}" rx="${rx}"/>`;
+  const eyes = pick(["round", "square", "visor", "cyclops", "tired"]);
+  if (eyes === "round") [-1, 1].forEach(k => s += `<circle class="dark" cx="${cx + k * gap}" cy="${eyeY}" r="7"/><circle class="${led} led" cx="${cx + k * gap}" cy="${eyeY}" r="3.1"/>`);
+  if (eyes === "square") [-1, 1].forEach(k => s += `<rect class="dark" x="${cx + k * gap - 6.5}" y="${eyeY - 5.5}" width="13" height="11" rx="1.5"/><rect class="${led} led" x="${cx + k * gap - 2.5}" y="${eyeY - 2.5}" width="5" height="5"/>`);
+  if (eyes === "visor") s += `<rect class="dark" x="${cx - w * .36}" y="${eyeY - 6}" width="${w * .72}" height="12" rx="6"/><rect class="${led} led" x="${cx - 9 + (R() - .5) * 14}" y="${eyeY - 1.5}" width="18" height="3" rx="1.5"/>`;
+  if (eyes === "cyclops") s += `<circle class="dark" cx="${cx}" cy="${eyeY}" r="11"/><circle class="${led} led" cx="${cx}" cy="${eyeY}" r="4.6"/>`;
+  if (eyes === "tired") [-1, 1].forEach(k => s += `<rect class="dark" x="${cx + k * gap - 7}" y="${eyeY - 3}" width="14" height="7" rx="1"/><rect class="${led} led" x="${cx + k * gap - 5}" y="${eyeY + 1}" width="10" height="2"/>`);
+  const mouth = pick(["grille", "flat", "zig", "frown"]);
+  if (mouth === "grille") s += `<rect class="dark" x="${cx - 13}" y="${mouthY - 4}" width="26" height="8" rx="1"/>` + [-6.5, 0, 6.5].map(o => `<path class="stem" style="stroke:var(--metal-1);stroke-width:1.4" d="M${cx + o} ${mouthY - 3}v6"/>`).join("");
+  if (mouth === "flat") s += `<path class="stem" d="M${cx - 10} ${mouthY}h20"/>`;
+  if (mouth === "zig") s += `<path class="stem" d="M${cx - 12} ${mouthY}l4 -3 4 3 4 -3 4 3 4 -3 4 3"/>`;
+  if (mouth === "frown") s += `<path class="stem" d="M${cx - 10} ${mouthY + 2}q10 -7 20 0"/>`;
+  const g = geo(r.ip);
+  s += `<rect class="pl" x="56" y="122" width="88" height="40" rx="2"/><circle class="${metal} outline" cx="56" cy="142" r="5.5"/><circle class="${metal} outline" cx="144" cy="142" r="5.5"/>`;
+  s += `<text class="pl-t" x="100" y="132.5" text-anchor="middle" font-size="6.2" letter-spacing="1.2">${esc(D.host.toUpperCase())} JAIL</text>`;
+  s += `<text class="pl-t" x="100" y="148" text-anchor="middle" font-size="12.5" font-weight="600">${booking(r)}</text>`;
+  s += `<text class="pl-t" x="100" y="157.5" text-anchor="middle" font-size="6.2" letter-spacing="1">${esc((g.cc || "??") + " · " + date(r.banned_at, false).toUpperCase())}</text>`;
+  return `<svg viewBox="0 0 200 170" role="img" aria-label="Portrait of prisoner ${booking(r)}">${s}</svg>`;
+}
+
+/* header */
+const recs = D.records, inside = recs.filter(r => r.inside), released = recs.filter(r => !r.inside);
+const repeats = recs.filter(r => r.bancount > 1).length, T = D.totals;
+$("rollcall").textContent = `Roll call ${date(NOW)} UTC · records since ${date(D.records_since, false)}`;
+$("board").innerHTML = [
+  ["in", inside.length, "inside right now"],
+  ["", released.length, "released, on record"],
+  ["", repeats, `repeat offenders, of ${recs.length} ever jailed`],
+  ["", T.ssh_loose + T.web_loose, `addresses that knocked in ${D.window_days} days and were never jailed`],
+].map(([c, v, l]) => `<div class="${c}"><b>${n(v)}</b><span>${l}</span></div>`).join("");
+$("rules").innerHTML = Object.entries(D.jails).map(([j, s]) => `<div class="rule"><span class="wing">${WING[j].name} · ${WING[j].what}</span>
+  <p>${s.maxretry} ${s.door === "ssh" ? "failed logins" : "requests without a valid token"} in ${span(s.findtime)}: ${term(s.bantime)} inside. Every repeat doubles the sentence, up to ${term(s.maxtime)}.</p></div>`).join("");
+
+/* cells */
+function charge(r) {
+  const s = D.ssh[r.ip], w = D.web[r.ip];
+  let out = "";
+  if (s && s.users.length) out += `<div><h3>Tried to log in as</h3><div class="chips">${s.users.map(([u, c]) => `<span class="chip">${esc(u)}<b>×${n(c)}</b></span>`).join("")}</div></div>`;
+  if (w && w.paths.length) out += `<div><h3>Asked for, without a token</h3><div class="chips">${w.paths.map(([u, c]) => `<span class="chip">${esc(u)}<b>×${n(c)}</b></span>`).join("")}</div></div>`;
+  if (w && w.uas.length) out += `<div><h3>Posing as</h3><div class="chips">${w.uas.map(([u]) => `<span class="chip">${esc(u || "(no user agent)")}</span>`).join("")}</div></div>`;
+  return out;
+}
+function sheet(r) {
+  const g = geo(r.ip), s = D.ssh[r.ip], w = D.web[r.ip], seen = s || w;
+  const facts = [
+    ["Booked", date(r.banned_at) + " UTC"],
+    [r.inside ? "Release" : "Released", date(r.released_early || r.release) + " UTC" + (r.released_early ? " (let out early)" : "")],
+    ["Sentence", term(r.sentence)],
+    ["Record", r.bancount > 1 ? `Repeat offender: ${ordinal(r.bancount)} time inside` : "First offence"],
+    ["Origin", `${flag(g.cc)} ${place(g)}`],
+    ["Network", g.org ? `${g.org} (${g.asn || "no AS number"})` : "Unknown"],
+  ];
+  if (seen) facts.push([`Last ${D.window_days} days`, `${n(s ? s.attempts : w.requests)} ${s ? "connections" : "requests"}, ${date(seen.first)} to ${date(seen.last)}`]);
+  const profile = MUGS ? `<div class="profile"><img alt="Profile view" src="${MUGS.side[mugType(r)]}"></div>` : "";
+  return `<h3>Rap sheet · ${booking(r)}</h3><div class="sheet-top">${profile}<dl class="facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div>${charge(r)}
+    ${r.evidence.length ? `<div><h3>Evidence</h3><pre class="evidence">${esc(r.evidence.join("\n"))}</pre></div>` : ""}`;
+}
+function cell(r, i) {
+  const g = geo(r.ip), served = NOW - r.banned_at, left = r.release - NOW;
+  return `<article class="cell" style="--i:${i}">
+    <button class="door" aria-expanded="false" aria-label="Prisoner ${booking(r)}, ${esc(r.ip)}: open the rap sheet">${mug(r)}<span class="bars"></span></button>
+    <div class="plate">
+      <span class="ip">${esc(r.ip)}</span>
+      <span class="from">${flag(g.cc)} ${esc(place(g))}${g.org ? `<br>${esc(g.org)}` : ""}</span>
+      <span class="tag ${r.bancount > 1 ? "repeat" : ""}">${r.bancount > 1 ? `Repeat offender ×${r.bancount}` : "First offence"}</span>
+      <div class="term"><div class="track"><i style="width:${Math.min(100, served / r.sentence * 100).toFixed(1)}%"></i></div>
+        <span>${term(r.sentence)} · ${span(left)} to go</span></div>
+    </div>
+    <div class="sheet" hidden>${sheet(r)}</div>
+  </article>`;
+}
+$("wings").innerHTML = Object.keys(D.jails).map(j => {
+  const list = inside.filter(r => r.jail === j).sort((a, b) => b.bancount - a.bancount || a.release - b.release);
+  const body = list.length ? `<div class="block">${list.map(cell).join("")}</div>` : `<p class="note">Nobody inside at roll call.</p>`;
+  return `<section><div class="sec-head"><h2>${WING[j].name}</h2><span class="count">${WING[j].what} · ${list.length} inside</span></div>${body}</section>`;
+}).join("");
+$("wings").addEventListener("click", e => {
+  const door = e.target.closest(".door");
+  if (!door) return;
+  const c = door.parentElement, open = !c.classList.contains("open");
+  document.querySelectorAll(".cell.open").forEach(o => { o.classList.remove("open"); o.querySelector(".sheet").hidden = true; o.querySelector(".door").setAttribute("aria-expanded", "false"); });
+  c.classList.toggle("open", open);
+  c.querySelector(".sheet").hidden = !open;
+  door.setAttribute("aria-expanded", String(open));
+  if (open) c.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+});
+/* a link ending in #S-1234 opens that prisoner's cell */
+(function () {
+  const want = location.hash.slice(1);
+  const door = want && [...document.querySelectorAll(".door")].find(d => d.getAttribute("aria-label").startsWith(`Prisoner ${want},`));
+  if (door) door.click();
+})();
+
+/* map */
+(function () {
+  const W = 1000, TOP = 84, BOT = -58, H = W * (TOP - BOT) / 360;
+  const proj = ([lon, lat]) => [(lon + 180) / 360 * W, (TOP - lat) / (TOP - BOT) * H];
+  const [sx, sy] = LAND.transform.scale, [tx, ty] = LAND.transform.translate;
+  const arcs = LAND.arcs.map(a => { let x = 0, y = 0; return a.map(([dx, dy]) => proj([(x += dx) * sx + tx, (y += dy) * sy + ty])); });
+  let d = "";
+  LAND.objects.land.geometries.forEach(g => (g.type === "Polygon" ? [g.arcs] : g.arcs).forEach(poly => poly.forEach(ring => {
+    let pts = [];
+    ring.forEach(i => { const a = i < 0 ? arcs[~i].slice().reverse() : arcs[i]; pts = pts.concat(pts.length ? a.slice(1) : a); });
+    d += "M" + pts.map(p => p[0].toFixed(1) + " " + p[1].toFixed(1)).join("L") + "Z";
+  })));
+  const home = D.home && D.home.lat != null ? proj([D.home.lon, D.home.lat]) : proj([2.35, 48.85]);
+  const state = o => o.inside ? "inside" : o.released ? "released" : "loose";
+  const order = { loose: 0, released: 1, inside: 2 };
+  const pts = D.origins.filter(o => o.lat <= TOP && o.lat >= BOT).sort((a, b) => order[state(a)] - order[state(b)]);
+  let routes = "", dots = "";
+  pts.forEach(o => {
+    const [x, y] = proj([o.lon, o.lat]), st = state(o), total = o.inside + o.released + o.loose;
+    const r = Math.min(13, 2.4 + Math.sqrt(total) * 1.25);
+    if (o.inside) { const mx = (x + home[0]) / 2, my = Math.min(y, home[1]) - Math.abs(x - home[0]) * .18 - 8; routes += `<path class="route" d="M${x.toFixed(1)} ${y.toFixed(1)}Q${mx.toFixed(1)} ${my.toFixed(1)} ${home[0].toFixed(1)} ${home[1].toFixed(1)}"/>`; }
+    const tip = `${place(o)}\n` + [[o.inside, "inside"], [o.released, "released"], [o.loose, "never jailed"]].filter(a => a[0]).map(a => `${n(a[0])} ${a[1]}`).join(" · ") + `\n${n(o.hits)} knocks in ${D.window_days} days`;
+    dots += `<circle class="origin o-${st}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" data-tip="${esc(tip)}"/>`;
+  });
+  $("map").innerHTML = `<svg viewBox="0 0 ${W} ${H.toFixed(0)}" role="img" aria-label="World map of where the addresses are registered"><path class="land" d="${d}"/>${routes}${dots}
+    <rect class="home" x="${home[0] - 4}" y="${home[1] - 4}" width="8" height="8" stroke="var(--cell)" stroke-width="1.4"/><text class="home-t" x="${home[0] - 9}" y="${home[1] + 17}" text-anchor="end">${esc(D.host)}</text></svg>`;
+  const located = D.countries.filter(c => c.cc).reduce((a, c) => a + c.inside + c.released + c.loose, 0);
+  $("map-count").textContent = `${n(located)} addresses · ${n(D.countries.filter(c => c.cc).length)} countries`;
+})();
+
+/* country and network tables */
+(function () {
+  const top = D.countries.filter(c => c.cc).slice(0, 12), max = Math.max(...top.map(c => c.inside + c.released + c.loose));
+  $("countries").innerHTML = `<table><thead><tr><th>Country</th><th class="r">Inside</th><th class="r">Released</th><th>Addresses seen</th><th class="r">Knocks</th></tr></thead><tbody>` +
+    top.map(c => { const t = c.inside + c.released + c.loose; return `<tr><td>${flag(c.cc)} ${esc(c.country)}</td><td class="r">${c.inside || "–"}</td><td class="r">${c.released || "–"}</td>
+      <td><span class="num">${n(t)}</span><span class="inbar" style="width:${(t / max * 100).toFixed(1)}%"></span></td><td class="r">${n(c.hits)}</td></tr>`; }).join("") + `</tbody></table>`;
+  $("networks").innerHTML = `<table><thead><tr><th>Network</th><th class="r">Inside</th><th class="r">Released</th><th class="r">Never jailed</th></tr></thead><tbody>` +
+    D.networks.slice(0, 12).map(k => `<tr><td>${flag(k.cc)} ${esc(k.org)}<small class="mono">${esc(k.asn || "")}</small></td><td class="r">${k.inside || "–"}</td><td class="r">${k.released || "–"}</td><td class="r">${k.loose || "–"}</td></tr>`).join("") + `</tbody></table>`;
+})();
+
+/* hourly timeline */
+(function () {
+  const tl = D.timeline.ssh, W = 1000, H = 230, L = 40, R = 8, Tp = 10, B = 26;
+  const max = Math.max(1, ...tl.map(a => a[1])), step = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find(s => max / s <= 4) || 2000;
+  const top = Math.ceil(max / step) * step, y = v => Tp + (H - Tp - B) * (1 - v / top), bw = (W - L - R) / tl.length;
+  let s = "";
+  for (let v = 0; v <= top; v += step) s += `<path class="grid" d="M${L} ${y(v)}H${W - R}"/><text class="axis" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+  tl.forEach(([h, v], i) => {
+    const x = L + i * bw, dt = new Date(h * 1000);
+    if (dt.getUTCHours() === 0) s += `<path class="grid" d="M${x} ${H - B}v5"/><text class="axis" x="${x + 2}" y="${H - 6}">${DAYS[dt.getUTCDay()]} ${dt.getUTCDate()}</text>`;
+    const tip = `${DAYS[dt.getUTCDay()]} ${date(h)} UTC\n${n(v)} connection${v === 1 ? "" : "s"}`;
+    const bh = Math.max(v ? 1.5 : 0, H - B - y(v));
+    s += `<rect class="hit" x="${x.toFixed(2)}" y="${Tp}" width="${bw.toFixed(2)}" height="${H - Tp - B}" data-tip="${esc(tip)}"/><rect class="bar" pointer-events="none" x="${(x + .8).toFixed(2)}" y="${(H - B - bh).toFixed(2)}" width="${Math.max(1, bw - 1.6).toFixed(2)}" height="${bh.toFixed(2)}" rx="1.4"/>`;
+  });
+  $("timeline").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="SSH connections per hour over ${D.window_days} days">${s}</svg>`;
+  $("tl-count").textContent = `${n(T.ssh_attempts)} connections from ${n(T.ssh_addresses)} addresses in ${D.window_days} days, per hour`;
+  const rank = (el, rows) => { const m = Math.max(1, ...rows.map(a => a[1])); $(el).innerHTML = rows.map(([k, v]) => `<span class="k">${esc(k)}</span><span class="b" style="width:${(v / m * 100).toFixed(1)}%"></span><span class="v">${n(v)}</span>`).join(""); };
+  rank("users", T.top_users);
+  if (!WEB) { $("paths").closest(".panel").remove(); return; }
+  rank("paths", T.top_paths);
+  const first = D.timeline.web.find(a => a[1]);
+  $("web-note").textContent = first ? `The ${WEB.what} has been up since ${date(first[0], false)}. Since then: ${n(T.web_requests)} requests without a token from ${n(T.web_addresses)} addresses.` : "";
+})();
+
+/* still at large, released */
+(function () {
+  const booked = new Set(recs.map(r => r.ip));
+  const ssh = Object.entries(D.ssh).filter(([ip]) => !booked.has(ip)).sort((a, b) => b[1].attempts - a[1].attempts).slice(0, 12);
+  const web = Object.entries(D.web).filter(([ip]) => !booked.has(ip)).sort((a, b) => b[1].requests - a[1].requests).slice(0, 8);
+  const who = ip => { const g = geo(ip); return `<td><span class="ip">${esc(ip)}</span></td><td>${flag(g.cc)} ${esc(place(g))}<small>${esc(g.org || "")}</small></td>`; };
+  $("loose").innerHTML = `<table><thead><tr><th>Address</th><th>From</th><th>Door</th><th class="r">Knocks</th><th>What they tried</th></tr></thead><tbody>` +
+    ssh.map(([ip, s]) => `<tr>${who(ip)}<td>SSH</td><td class="r">${n(s.attempts)}</td><td>${s.users.length ? "as " + s.users.slice(0, 4).map(u => `<span class="mono">${esc(u[0])}</span>`).join(", ") : "no username given"}</td></tr>`).join("") +
+    web.map(([ip, w]) => `<tr>${who(ip)}<td>Web</td><td class="r">${n(w.requests)}</td><td>${w.paths.slice(0, 3).map(u => `<span class="mono">${esc(u[0])}</span>`).join(", ")}</td></tr>`).join("") + `</tbody></table>`;
+  $("loose-count").textContent = `${n(T.ssh_loose)} at the SSH door${WEB ? ` · ${n(T.web_loose)} at the web door` : ""} · busiest shown`;
+  $("loose-note").textContent = "On a key-only server most SSH guesses end with the bot naming a user and hanging up when it finds there is no password to guess. fail2ban's stock SSH rule does not count that, so the busiest guessers can stay at large unless the rule is widened." + (WEB ? " At the web door, a single request is one strike short of a sentence." : "");
+  const rel = released.slice().sort((a, b) => b.bancount - a.bancount || b.release - a.release);
+  $("released").innerHTML = `<table><thead><tr><th>Address</th><th>From</th><th>Wing</th><th class="r">Times inside</th><th class="r">Last sentence</th><th class="r">Released</th></tr></thead><tbody>` +
+    rel.map(r => `<tr>${who(r.ip)}<td>${WING[r.jail].letter}</td><td class="r">${r.bancount > 1 ? `<span class="tag repeat">×${r.bancount}</span>` : "1"}</td><td class="r">${term(r.sentence)}</td><td class="r">${date(r.released_early || r.release, false)}</td></tr>`).join("") + `</tbody></table>`;
+  $("rel-count").textContent = `${rel.length} served their time · ${rel.filter(r => r.bancount > 1).length} of them repeat offenders`;
+  $("foot-src").textContent = `Source: the jail records on ${D.host} (fail2ban bans, the SSH journal${WEB ? ", the web log" : ""}), exported ${date(NOW)} UTC. Countries from ${D.geo_source}.`;
+})();
+
+/* tooltip */
+(function () {
+  const tip = $("tip");
+  document.addEventListener("pointermove", e => {
+    const t = e.target.closest && e.target.closest("[data-tip]");
+    if (!t) { tip.hidden = true; return; }
+    tip.textContent = t.dataset.tip;
+    tip.hidden = false;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, e.clientX + 14)) + "px";
+    tip.style.top = (e.clientY + h + 24 > innerHeight ? e.clientY - h - 12 : e.clientY + 16) + "px";
+  });
+  document.addEventListener("pointerleave", () => { tip.hidden = true; });
+})();
+
+/* day shift or lights out: follows the system until you choose, then remembers the
+   choice for every page of the site, and switches other open pages with it */
+(() => {
+  const root = document.documentElement, button = document.getElementById("lights");
+  const darkQ = matchMedia("(prefers-color-scheme: dark)");
+  const night = () => root.dataset.theme ? root.dataset.theme === "dark" : darkQ.matches;
+  const label = () => { button.textContent = night() ? "Day shift" : "Lights out"; button.setAttribute("aria-pressed", String(night())); };
+  button.addEventListener("click", () => {
+    const mode = night() ? "light" : "dark";
+    root.dataset.theme = mode;
+    try { localStorage.setItem("lights", mode); } catch (e) {}
+    label();
+  });
+  addEventListener("storage", e => { if (e.key === "lights" && (e.newValue === "dark" || e.newValue === "light")) { root.dataset.theme = e.newValue; label(); } });
+  darkQ.addEventListener("change", label);
+  label();
+})();
+</script>

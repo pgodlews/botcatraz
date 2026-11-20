@@ -1,0 +1,10 @@
+Nov 20 10:00:01 server1 sshd[2101]: Connection closed by authenticating user root 203.0.113.5 port 51234 [preauth]
+Nov 20 10:00:02 server1 sshd[2102]: Disconnected from authenticating user admin 203.0.113.6 port 40112 [preauth]
+Nov 20 10:00:03 server1 sshd[2103]: Connection reset by authenticating user ubuntu 2001:db8::66 port 40113 [preauth]
+Nov 20 10:00:04 server1 sshd[2104]: Connection closed by 198.51.100.7 port 50000 [preauth]
+Nov 20 10:00:05 server1 sshd[2105]: Connection reset by 198.51.100.8 port 50001 [preauth]
+Nov 20 10:00:06 server1 sshd[2106]: Disconnected from 198.51.100.9 port 50002 [preauth]
+Nov 20 10:00:07 server1 sshd[2107]: Accepted publickey for alice from 192.0.2.10 port 50003 ssh2: ED25519 SHA256:AAAAexampleexampleexampleexampleexampleexam
+Nov 20 10:00:08 server1 sshd[2108]: Disconnected from user alice 192.0.2.10 port 50003
+Nov 20 10:00:09 server1 sshd[2109]: Invalid user oracle from 203.0.113.8 port 41000
+Nov 20 10:00:10 server1 sshd[2110]: Failed password for root from 203.0.113.9 port 41001 ssh2

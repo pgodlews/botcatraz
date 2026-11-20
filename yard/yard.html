@@ -1,0 +1,782 @@
+<title>{{NAME}} Yard · Botcatraz</title>
+<script>/* the saved Lights out / Day shift choice, applied before the page is drawn */try { const t = localStorage.getItem("lights") || localStorage.getItem("yard-lights"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Stencil+One&display=swap">
+<style>
+/* The exercise yard: one canvas of pixel art, a headcount strip above it and the gate
+   log below. Light = day shift, dark = lights out (the yard goes dark, the lamps come on). */
+:root {
+  --wall: #dfe4da; --wall-2: #d1d8cb; --cell: #eef1ea; --ink: #1b231f; --ink-2: #48554d; --ink-3: #6b7870;
+  --rule: #b8c1b4; --steel: #66726b; --jumpsuit: #d9611a; --released: #2a78d6;
+  --placard: #1f2623; --placard-ink: #f3f5ef;
+  --display: "Saira Stencil One", "Arial Narrow", Impact, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wall: #131917; --wall-2: #0e1311; --cell: #1c2420; --ink: #e4eae3; --ink-2: #aab6ad; --ink-3: #86938a;
+    --rule: #33403a; --steel: #7c8981; --jumpsuit: #de632a; --released: #4a8fe0;
+    --placard: #0b0f0d; --placard-ink: #eef2ea; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --wall: #131917; --wall-2: #0e1311; --cell: #1c2420; --ink: #e4eae3; --ink-2: #aab6ad; --ink-3: #86938a;
+  --rule: #33403a; --steel: #7c8981; --jumpsuit: #de632a; --released: #4a8fe0;
+  --placard: #0b0f0d; --placard-ink: #eef2ea; color-scheme: dark;
+}
+body { background: var(--wall); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; margin: 0; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 22px; }
+h1, h2, p, ol { margin: 0; }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(40px, 8vw, 72px); line-height: .95; letter-spacing: .02em; }
+h2 { font-family: var(--display); font-weight: 400; font-size: 24px; letter-spacing: .04em; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.eyebrow a { color: inherit; }
+.lede { max-width: 62ch; color: var(--ink-2); }
+.head { display: flex; flex-direction: column; gap: 10px; }
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 2px solid var(--steel); background: var(--cell); }
+.board div { padding: 10px 14px; border-right: 1px solid var(--rule); display: flex; flex-direction: column; }
+.board div:last-child { border-right: 0; }
+.board b { font-family: var(--display); font-weight: 400; font-size: 30px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.board div:first-child b { color: var(--jumpsuit); }
+.board span { font-size: 12.5px; color: var(--ink-2); }
+.stage { position: relative; border: 2px solid var(--steel); background: #161c19; }
+.scroll { overflow-x: auto; }
+canvas { display: block; image-rendering: pixelated; cursor: default; }
+#tip { position: absolute; z-index: 5; pointer-events: none; background: var(--placard); color: var(--placard-ink); font-size: 12.5px;
+  line-height: 1.4; padding: 7px 10px; max-width: 250px; display: none; border: 1px solid var(--steel); }
+#tip b { font-family: var(--mono); font-weight: 600; display: block; }
+#tip small { display: block; opacity: .75; margin-top: 3px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; font-size: 13px; color: var(--ink-2); }
+button { font: 500 13px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ink); background: var(--cell);
+  border: 2px solid var(--steel); padding: 7px 12px; cursor: pointer; }
+button:hover { border-color: var(--jumpsuit); }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--jumpsuit); outline-offset: 2px; }
+#log { list-style: none; padding: 0; border: 2px solid var(--steel); background: var(--cell); }
+#log li { display: grid; grid-template-columns: 64px 74px minmax(0, 1fr); gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--rule); font-size: 13.5px; align-items: baseline; }
+#log li:last-child { border-bottom: 0; }
+#log time, #log .bk { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+#log .in .bk { color: var(--jumpsuit); } #log .out .bk { color: var(--released); }
+#log a { color: inherit; }
+#log .none { display: block; color: var(--ink-3); }
+footer { font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 14px; }
+footer a { color: inherit; }
+@media (prefers-reduced-motion: reduce) { .stage::after { content: "Animation paused: your system asks for reduced motion. Press Play to run it."; position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: #e4eae3; } }
+</style>
+
+<div class="wrap">
+  <header class="head">
+    <p class="eyebrow"><span id="site-nav" hidden><a href="../">All jails</a> · <a href="./">Cell blocks</a> · </span><span id="clock"></span></p>
+    <h1>The Yard</h1>
+    <p class="lede">Every robot here is an address fail2ban locked out of {{NAME}}. A new ban walks in through the gate, a finished sentence walks out, and a repeat offender gets a welcome. No more than 30 are let out at once; the rest wait their turn in the cell block.</p>
+  </header>
+  <div class="board">
+    <div><b id="n-yard">0</b><span>in the yard</span></div>
+    <div><b id="n-in">0</b><span>in the cell block</span></div>
+    <div><b id="n-rep">0</b><span>repeat offenders inside</span></div>
+    <div><b id="n-next">–</b><span id="n-next-l">next release</span></div>
+  </div>
+  <div class="stage">
+    <div class="scroll"><canvas id="yard" width="640" height="360" role="img" aria-label="Animated prison yard with robot inmates"></canvas></div>
+    <div id="tip"></div>
+  </div>
+  <div class="controls">
+    <button id="lights" type="button">Lights out</button>
+    <button id="replay" type="button">Replay last arrival</button>
+    <button id="play" type="button" hidden>Play</button>
+    <span id="status"></span>
+  </div>
+  <section>
+    <h2>Gate log</h2>
+    <ol id="log"></ol>
+  </section>
+  <footer>Countries and networks: IP Geolocation by <a href="https://db-ip.com">DB-IP</a>, looked up offline. Hover or tap a robot to see who it is. Drawn by Botcatraz.</footer>
+</div>
+
+<script>
+"use strict";
+const DATA = /*__YARD__*/null;   // { generated, prisoners: [...], released: [...] }
+const ART = /*__ART__*/null;     // sprite sheets and scene, as data URIs plus their JSON
+const LIVE = /*__LIVE__*/false;  // true when served next to yard.json
+
+const W = 640, H = 360, MAX_YARD = 30, SPEED = 30;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+const flag = cc => cc && /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1f1a5 + c.charCodeAt(0))) : "";
+const booking = r => `${r.wing || r.jail[0].toUpperCase()}-${hash(r.ip) % 9000 + 1000}`;
+const keyOf = r => `${r.jail}|${r.ip}|${r.banned_at}`;
+const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd", "th", "th", "th", "th", "th", "th"][n % 10]);
+const place = r => [r.city, r.country].filter(Boolean).join(", ") || "origin unknown";
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function span(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} m` : m ? `${m} m` : `${sec} s`;
+}
+const hhmm = ts => new Date(ts * 1000).toISOString().slice(11, 16);
+const params = new URLSearchParams(location.search);
+const FAST = Math.min(60, Math.max(1, Number(params.get("fast")) || 1));
+
+/* ---------- layout: defaults follow the art spec, replaced by the artist's zones.json ---------- */
+let Z = {
+  door: [150, 60], gate: [622, 175], gateOut: [672, 175], intake: [566, 176],
+  hoop: { pole: [30, 196], rim: [46, 178] },
+  courtSpots: [[80, 140], [130, 170], [90, 212], [150, 244], [110, 272], [182, 200], [70, 182], [162, 130]],
+  seats: [[288, 112, "down"], [312, 112, "down"], [288, 142, "up"], [312, 142, "up"], [364, 112, "down"], [388, 112, "down"], [364, 142, "up"], [388, 142, "up"]]
+    .map(s => ({ p: [s[0], s[1]], face: s[2] })),
+  barSpots: [[430, 108], [455, 108], [480, 108], [505, 108], [530, 108]],
+  press: [{ p: [300, 268], prop: "bench_0" }, { p: [362, 268], prop: "bench_1" }],
+  curlSpots: [[290, 312], [330, 316], [370, 312], [410, 300]],
+  smokeSpots: [[512, 292], [540, 318], [572, 324], [596, 298], [548, 282]],
+  loiterSpots: [[250, 90], [340, 180], [420, 170], [480, 200], [240, 200], [232, 322], [470, 240], [560, 120], [596, 104], [350, 92], [200, 332], [452, 340]],
+  guardPost: [604, 216],
+  obstacles: [[284, 116, 32, 18], [360, 116, 32, 18], [420, 56, 120, 40], [26, 188, 10, 12], [556, 296, 10, 8], [516, 264, 8, 8], [400, 230, 24, 12]],
+  walkable: [[12, 58, 616, 290]],
+};
+const ROWS = {};
+[["idle_down", 4, 3], ["idle_side", 4, 3], ["idle_up", 2, 2], ["walk_down", 4, 7], ["walk_side", 4, 7], ["walk_up", 4, 7], ["sit", 2, 1],
+ ["press", 4, 4], ["curl", 4, 4], ["dribble", 4, 8], ["shoot", 4, 7], ["smoke", 6, 3], ["drink", 6, 4], ["wave", 4, 6], ["bump", 4, 5], ["talk", 2, 3]]
+  .forEach(([name, frames, fps], row) => ROWS[name] = { row, frames, fps });
+let FRAME = [32, 32], ANCHOR = [16, 28];
+
+/* ---------- art ---------- */
+const sheets = [], props = [], propByName = {};
+let guardSheet = null, bgImg = null, propsImg = null;
+const hidden = new Set();   // props hidden while a robot uses them
+const loadImg = src => new Promise(res => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+const pt = v => Array.isArray(v) ? [v[0], v[1]] : v && typeof v === "object" ? [v.x ?? v.point?.[0] ?? v.p?.[0] ?? v.at?.[0], v.y ?? v.point?.[1] ?? v.p?.[1] ?? v.at?.[1]] : null;
+const rect = v => Array.isArray(v) ? v.slice(0, 4) : v && typeof v === "object" ? [v.x, v.y, v.w ?? v.width, v.h ?? v.height] : null;
+function adoptZones(z) {
+  if (!z) return;
+  const g = (...names) => { for (const n of names) if (z[n] != null) return z[n]; };
+  const pts = v => (v || []).map(pt).filter(p => p && Number.isFinite(p[0]));
+  const n = { ...Z };
+  if (g("door")) n.door = pt(g("door"));
+  if (g("gate")) n.gate = pt(g("gate"));
+  if (g("gate_outside", "gateOut")) n.gateOut = pt(g("gate_outside", "gateOut"));
+  const hoop = g("hoop");
+  if (hoop) n.hoop = { pole: pt(hoop.pole ?? hoop.pole_base ?? hoop.base), rim: pt(hoop.rim ?? hoop.rim_centre ?? hoop.rim_center) };
+  if (g("court_spots")) n.courtSpots = pts(g("court_spots"));
+  if (g("bar_spots")) n.barSpots = pts(g("bar_spots"));
+  if (g("curl_spots")) n.curlSpots = pts(g("curl_spots"));
+  if (g("smoke_spots")) n.smokeSpots = pts(g("smoke_spots"));
+  if (g("loiter_spots")) n.loiterSpots = pts(g("loiter_spots"));
+  if (g("guard_post")) n.guardPost = pt(g("guard_post"));
+  if (g("seats")) n.seats = g("seats").map(s => ({ p: pt(s.point ?? s.p ?? s), face: /up|away|north/i.test(s.faces ?? s.face ?? s.facing ?? "") ? "up" : "down" }));
+  if (g("press")) n.press = g("press").map(s => ({ p: pt(s.point ?? s.p ?? s.anchor ?? s), prop: s.prop ?? s.hide ?? s.prop_name }));
+  if (g("obstacles")) n.obstacles = g("obstacles").map(rect).filter(Boolean);
+  if (g("walkable")) n.walkable = g("walkable").map(rect).filter(Boolean);
+  n.intake = [Math.min(n.gate[0] - 52, 580), n.gate[1] + 1];
+  n.gateOut = [Math.max(n.gateOut?.[0] ?? 0, W + 30), n.gate[1]];
+  Z = n;
+}
+async function loadArt() {
+  if (!ART) return;
+  const r = ART.robots, s = ART.scene;
+  if (r) {
+    (await Promise.all((r.sheets || []).map(loadImg))).forEach(i => i && sheets.push(i));
+    guardSheet = await loadImg(r.guard);
+    if (r.meta?.frame) FRAME = r.meta.frame;
+    if (r.meta?.anchor) ANCHOR = r.meta.anchor;
+    for (const row of r.meta?.rows || []) ROWS[row.name] = { row: row.row, frames: row.frames, fps: row.fps || ROWS[row.name]?.fps || 4 };
+  }
+  if (s) {
+    bgImg = await loadImg(s.bg);
+    propsImg = await loadImg(s.props);
+    const list = Array.isArray(s.propsMeta) ? s.propsMeta : s.propsMeta?.props || Object.entries(s.propsMeta || {}).map(([name, v]) => ({ name, ...v }));
+    for (const p of list) {
+      if (!p || !p.name) continue;
+      const q = { name: p.name, rect: p.rect, at: p.at, baseline: p.baseline, frames: p.frames, blocks: p.blocks };
+      propByName[q.name] = q;
+      if (q.rect && q.at && !q.frames && !p.dynamic) props.push(q);
+    }
+    adoptZones(s.zones);
+  }
+}
+
+/* ---------- walking: an 8 px grid, A*, then straight lines where nothing is in the way ---------- */
+const CS = 8, GW = W / CS, GH = H / CS;
+let blocked = new Uint8Array(GW * GH);
+const inRect = (x, y, r, pad = 0) => x >= r[0] - pad && x < r[0] + r[2] + pad && y >= r[1] - pad && y < r[1] + r[3] + pad;
+function buildGrid() {
+  for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+    const x = gx * CS + 4, y = gy * CS + 4;
+    blocked[gy * GW + gx] = !Z.walkable.some(r => inRect(x, y, r)) || Z.obstacles.some(r => inRect(x, y, r, 4)) ? 1 : 0;
+  }
+}
+const cellOf = p => [Math.max(0, Math.min(GW - 1, Math.floor(p[0] / CS))), Math.max(0, Math.min(GH - 1, Math.floor(p[1] / CS)))];
+function freeCell(c) {
+  if (!blocked[c[1] * GW + c[0]]) return c;
+  for (let r = 1; r < 14; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    const x = c[0] + dx, y = c[1] + dy;
+    if (x >= 0 && y >= 0 && x < GW && y < GH && !blocked[y * GW + x]) return [x, y];
+  }
+  return c;
+}
+function clear(a, b) {
+  const n = Math.ceil(dist(a, b) / 3);
+  for (let i = 0; i <= n; i++) {
+    const x = a[0] + (b[0] - a[0]) * i / n, y = a[1] + (b[1] - a[1]) * i / n;
+    if (x < 0 || y < 0 || x >= W || y >= H || blocked[Math.floor(y / CS) * GW + Math.floor(x / CS)]) return false;
+  }
+  return true;
+}
+function findPath(from, to) {
+  const s = freeCell(cellOf(from)), e = freeCell(cellOf(to));
+  const si = s[1] * GW + s[0], ei = e[1] * GW + e[0];
+  const g = new Float32Array(GW * GH).fill(Infinity), prev = new Int32Array(GW * GH).fill(-1), done = new Uint8Array(GW * GH);
+  const open = [[0, si]];
+  g[si] = 0;
+  while (open.length) {
+    let best = 0;
+    for (let i = 1; i < open.length; i++) if (open[i][0] < open[best][0]) best = i;
+    const [, cur] = open.splice(best, 1)[0];
+    if (cur === ei) break;
+    if (done[cur]) continue;
+    done[cur] = 1;
+    const cx = cur % GW, cy = (cur - cx) / GW;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= GW || y >= GH) continue;
+      const ni = y * GW + x;
+      if (blocked[ni] || done[ni]) continue;
+      if (dx && dy && (blocked[cy * GW + x] || blocked[y * GW + cx])) continue;
+      const cost = g[cur] + (dx && dy ? 1.414 : 1);
+      if (cost < g[ni]) { g[ni] = cost; prev[ni] = cur; open.push([cost + Math.hypot(e[0] - x, e[1] - y), ni]); }
+    }
+  }
+  const cells = [];
+  for (let c = ei; c !== -1 && c !== si; c = prev[c]) cells.push([c % GW * CS + 4, Math.floor(c / GW) * CS + 4]);
+  cells.reverse();
+  const raw = [from.slice(), ...cells], out = [];
+  let i = 0;
+  while (i < raw.length - 1) {            // string pulling: skip waypoints with a clear line
+    let j = raw.length - 1;
+    while (j > i + 1 && !clear(raw[i], raw[j])) j--;
+    out.push(raw[j]);
+    i = j;
+  }
+  out.push(to.slice());
+  return out;
+}
+
+/* ---------- the cast ---------- */
+const robots = new Map();
+const gone = new Set();       // bookings already released here, so a late feed cannot bring them back
+const queue = [];             // gate events, one at a time
+let currentEvent = null, now = 0, firstSync = true;
+const timers = [];
+const after = (sec, fn) => timers.push({ at: now + sec, fn });
+const door = { open: 0 }, gate = { open: 0 };
+const puffs = [], bubbles = [];
+const ball = { state: "ground", x: 60, y: 200, z: 0, holder: null, t: 0, from: null, to: null, shooter: null };
+let guard = null;
+
+function makeRobot(rec) {
+  return { rec, id: keyOf(rec), variant: hash(rec.ip), x: Z.door[0], y: Z.door[1], anim: "idle_down", t: Math.random() * 4, flip: false, alpha: 1,
+    where: "inside", path: null, then: null, task: null, slot: null, busy: false, emote: null, emoteUntil: 0, carry: false, doorUse: false, gateUse: false, fade: null, lastFrame: 0 };
+}
+const inYard = () => [...robots.values()].filter(r => r.where === "yard");
+const idleOnes = () => inYard().filter(r => !r.busy && !r.fade);
+
+function setAnim(r, anim, flip) { if (r.anim !== anim) { r.anim = anim; r.t = 0; } if (flip !== undefined) r.flip = flip; }
+function go(r, pts, then) { r.path = pts.map(p => p.slice()); r.then = then || null; }
+function say(r, emote, secs = 2.2) { r.emote = emote; r.emoteUntil = now + secs; }
+function freeSlot(r) {
+  if (r.slot) { if (r.slot.by === r) r.slot.by = null; if (r.slot.prop) hidden.delete(r.slot.prop); r.slot = null; }
+  if (ball.holder === r) dropBall(r);
+  r.task = null;
+}
+
+/* ---------- pastimes ---------- */
+let slots = {};
+function buildSlots() {
+  const mk = (list, extra) => list.map(p => ({ p: Array.isArray(p) ? p : p.p, by: null, ...(Array.isArray(p) ? {} : p), ...extra }));
+  slots = { press: mk(Z.press), curl: mk(Z.curlSpots), seat: mk(Z.seats), bar: mk(Z.barSpots), smoke: mk(Z.smokeSpots), court: mk(Z.courtSpots), loiter: mk(Z.loiterSpots) };
+}
+const WEIGHT = { loiter: 3, lap: 2.5, court: 3, press: 2, curl: 2, seat: 2, bar: 2.5, smoke: 2.5, chat: 2.5 };
+const TIME = { loiter: [6, 16], court: [25, 60], press: [14, 30], curl: [10, 22], seat: [12, 30], bar: [10, 22], smoke: [10, 22], chat: [7, 14] };
+const courtCount = () => slots.court.filter(s => s.by).length;
+
+function pickTask(r, teleport) {
+  if (r.where !== "yard" || r.busy || r.leaving) return;
+  freeSlot(r);
+  const options = Object.keys(WEIGHT).filter(t => {
+    if (t === "lap") return !teleport;
+    if (t === "chat") return !teleport && chatPartner(r);
+    if (t === "court" && courtCount() >= 6) return false;
+    return slots[t].some(s => !s.by);
+  });
+  let roll = Math.random() * options.reduce((a, t) => a + WEIGHT[t], 0), type = options[0] || "lap";
+  for (const t of options) { roll -= WEIGHT[t]; if (roll <= 0) { type = t; break; } }
+  if (type === "lap") {
+    const stops = [pick(Z.loiterSpots), pick(Z.loiterSpots), pick(Z.loiterSpots)];
+    let pos = [r.x, r.y], path = [];
+    for (const s of stops) { path = path.concat(findPath(pos, s)); pos = s; }
+    r.task = { type };
+    return go(r, path, () => pickTask(r));
+  }
+  if (type === "chat") {
+    const other = chatPartner(r), side = r.x < other.x ? -1 : 1;
+    r.task = { type, with: other };
+    return go(r, findPath([r.x, r.y], [other.x + side * 15, other.y]), () => {
+      if (other.where !== "yard" || other.busy || other.task?.type !== "loiter") return pickTask(r);
+      const until = now + rand(...TIME.chat);
+      r.task = { type: "chat", until, with: other }; other.task = { type: "chat", until, with: r, slotKeep: true };
+      setAnim(r, "talk", other.x < r.x); setAnim(other, "talk", r.x < other.x);
+    });
+  }
+  const free = slots[type].filter(s => !s.by);
+  const slot = type === "court" || type === "loiter" ? pick(free) : free.sort((a, b) => dist(a.p, [r.x, r.y]) - dist(b.p, [r.x, r.y]))[Math.floor(Math.random() * Math.min(2, free.length))];
+  slot.by = r; r.slot = slot;
+  r.task = { type, going: true };
+  if (teleport) { r.x = slot.p[0]; r.y = slot.p[1]; return startAct(r, type, slot); }
+  go(r, findPath([r.x, r.y], slot.p), () => startAct(r, type, slot));
+}
+function chatPartner(r) {
+  return inYard().find(o => o !== r && !o.busy && !o.path && o.task?.type === "loiter" && dist([o.x, o.y], [r.x, r.y]) < 170);
+}
+function startAct(r, type, slot) {
+  r.task = { type, until: now + rand(...TIME[type]), phase: 0, phaseAt: now };
+  r.x = slot.p[0]; r.y = slot.p[1];
+  const side = Math.random() < 0.5;
+  if (type === "press") { setAnim(r, "press", false); if (slot.prop) hidden.add(slot.prop); }
+  else if (type === "curl") setAnim(r, "curl", false);
+  else if (type === "seat") setAnim(r, slot.face === "up" ? (ROWS.sit_back ? "sit_back" : "idle_up") : "sit", false);
+  else if (type === "bar") setAnim(r, "drink", side);
+  else if (type === "smoke") setAnim(r, "smoke", side);
+  else if (type === "loiter") setAnim(r, Math.random() < 0.5 ? "idle_down" : "idle_side", side);
+  else if (type === "court") { setAnim(r, "idle_side", r.x > Z.hoop.rim[0]); r.task.nextMove = now + rand(2, 5); }
+}
+function runTask(r, dt) {
+  const k = r.task;
+  if (!k || k.going) return;
+  if (k.until && now > k.until && !(k.type === "court" && (ball.holder === r || k.shooting))) {
+    if (k.type === "chat" && k.with?.task?.with === r) { const o = k.with; o.task = { type: "loiter", until: now + rand(2, 6) }; setAnim(o, "idle_down"); }
+    return pickTask(r);
+  }
+  if (k.type === "bar" || k.type === "smoke") {          // a sip or a drag, then a pause
+    const active = k.type === "bar" ? "drink" : "smoke", row = ROWS[active], len = row.frames / row.fps;
+    if (r.anim === active && r.t >= len) { setAnim(r, "idle_side"); k.phaseAt = now + rand(1.2, 3.5); if (k.type === "smoke") puffs.push({ x: r.x + (r.flip ? -7 : 7), y: r.y - 20, t: 0 }); if (k.type === "bar" && Math.random() < 0.25) say(r, "oil", 1.6); }
+    else if (r.anim !== active && now > k.phaseAt) setAnim(r, active);
+  } else if (k.type === "chat") {
+    if (now > (k.nextSay || 0)) { k.nextSay = now + rand(2, 4.5); if (Math.random() < 0.6) say(r, pick(["hi", "bang", "oil", "heart", "zzz"]), 1.6); }
+  } else if (k.type === "loiter") {
+    if (now > (k.nextTurn || (k.nextTurn = now + rand(3, 7)))) { k.nextTurn = now + rand(3, 7); setAnim(r, pick(["idle_down", "idle_side"]), Math.random() < 0.5); if (Math.random() < 0.08) say(r, "zzz", 2.5); }
+  } else if (k.type === "court") playBall(r, k);
+}
+
+/* basketball: whoever is nearest fetches the ball, dribbles to a spot, shoots; the rest shuffle about */
+function dropBall(r) { ball.state = "ground"; ball.holder = null; ball.x = r.x + (r.flip ? -8 : 8); ball.y = r.y; ball.z = 0; }
+function playBall(r, k) {
+  if (r.path) return;
+  const players = slots.court.filter(s => s.by && !s.by.task?.going).map(s => s.by);
+  if (ball.state === "ground" && !players.some(p => p.task.fetching)) {
+    const nearest = players.slice().sort((a, b) => dist([a.x, a.y], [ball.x, ball.y]) - dist([b.x, b.y], [ball.x, ball.y]))[0];
+    if (nearest === r) {
+      k.fetching = true;
+      return go(r, findPath([r.x, r.y], [ball.x, ball.y]), () => { k.fetching = false; if (ball.state === "ground") { ball.state = "held"; ball.holder = r; k.dribbleUntil = now + rand(1.5, 3.5); k.moved = false; setAnim(r, "dribble", r.x > Z.hoop.rim[0]); } });
+    }
+  }
+  if (ball.holder === r) {
+    if (k.shooting) {
+      if (r.t >= 0.42 && ball.state === "held") { ball.state = "air"; ball.holder = null; ball.t = 0; ball.from = [r.x + (r.flip ? -4 : 4), r.y, 26]; ball.to = [Z.hoop.rim[0] + 2, Z.hoop.pole[1], Math.max(18, Z.hoop.pole[1] - Z.hoop.rim[1] + 2)]; ball.shooter = r; ball.scored = Math.random() < 0.55; }
+      return;
+    }
+    if (now > k.dribbleUntil) {
+      if (!k.moved) { k.moved = true; k.dribbleUntil = now + rand(0.6, 1.4); const s = pick(slots.court.filter(s => !s.by)); if (s) { r.slot.by = null; s.by = r; r.slot = s; return go(r, findPath([r.x, r.y], s.p), null); } }
+      k.shooting = true; setAnim(r, "shoot", r.x > Z.hoop.rim[0]); r.t = 0;
+      after(0.9, () => { if (r.task === k) { k.shooting = false; k.nextMove = now + rand(2, 4); setAnim(r, "idle_side", r.x > Z.hoop.rim[0]); } });
+    }
+    return;
+  }
+  if (!k.shooting && now > k.nextMove) {
+    k.nextMove = now + rand(3, 7);
+    const s = pick(slots.court.filter(s => !s.by));
+    if (s && Math.random() < 0.7) { r.slot.by = null; s.by = r; r.slot = s; go(r, findPath([r.x, r.y], s.p), () => setAnim(r, "idle_side", r.x > ball.x)); }
+    else setAnim(r, "idle_side", r.x > ball.x);
+  }
+}
+function moveBall(dt) {
+  if (ball.state === "held" && ball.holder) { ball.x = ball.holder.x; ball.y = ball.holder.y; return; }
+  if (ball.state !== "air") return;
+  ball.t += dt / 0.85;
+  const u = Math.min(1, ball.t);
+  ball.x = ball.from[0] + (ball.to[0] - ball.from[0]) * u; ball.y = ball.from[1] + (ball.to[1] - ball.from[1]) * u;
+  ball.z = ball.from[2] + (ball.to[2] - ball.from[2]) * u + Math.sin(u * Math.PI) * 26;
+  if (u >= 1) {
+    if (ball.scored && ball.shooter?.where === "yard") say(ball.shooter, "fist", 1.8);
+    ball.state = "ground"; ball.z = 0;
+    const c = Z.courtSpots, land = [Z.hoop.rim[0] + rand(14, 46), Z.hoop.pole[1] + rand(-26, 26)];
+    ball.x = Math.max(c.reduce((m, p) => Math.min(m, p[0]), W) - 30, land[0]); ball.y = land[1];
+  }
+}
+
+/* ---------- cell block door: the yard holds 30, the rest wait inside ---------- */
+function sendInside(r, then) {
+  freeSlot(r); r.busy = true; r.doorUse = true;
+  go(r, findPath([r.x, r.y], Z.door), () => { setAnim(r, "walk_up", false); r.fade = { dir: -1, t: 0, then: () => { r.where = "inside"; r.busy = false; r.doorUse = false; r.napUntil = now + rand(25, 60); then && then(); } }; });
+}
+function bringOut(r, then) {
+  r.where = "yard"; r.busy = true; r.doorUse = true; r.x = Z.door[0]; r.y = Z.door[1] - 9; r.alpha = 0; setAnim(r, "walk_down", false);
+  r.fade = { dir: 1, t: 0, then: () => { r.doorUse = false; if (then) then(); else { r.busy = false; pickTask(r); } } };
+}
+let nextChurn = 12;
+function balance() {
+  const out = inYard().length, waiting = [...robots.values()].filter(r => r.where === "inside");
+  const inside = waiting.filter(r => !(r.napUntil > now) || waiting.length > 4);
+  const comingOut = [...robots.values()].filter(r => r.fade?.dir === 1).length;
+  const held = queue.some(e => robots.get(e.id)?.where !== "yard") || (currentEvent && !robots.get(currentEvent.id)?.leaving) ? 1 : 0;   // a place kept for whoever is at the gate
+  if (inside.length && out + comingOut + held < MAX_YARD && !door.busyUntil) { bringOut(pick(inside)); door.busyUntil = now + 1.2; }
+  if (door.busyUntil && now > door.busyUntil) door.busyUntil = 0;
+  if (now > nextChurn) {                      // someone has had enough fresh air
+    nextChurn = now + (waiting.length > 4 ? rand(9, 18) : rand(40, 90));
+    const tired = pick(idleOnes().filter(r => !r.path || r.task?.type === "lap"));
+    if (tired && (waiting.length || robots.size > 6)) sendInside(tired);
+  }
+}
+
+/* ---------- gate events ---------- */
+function logEvent(kind, rec, ts, note) {
+  const li = document.createElement("li");
+  li.className = kind;
+  const who = `${flag(rec.cc)} ${esc(place(rec))}`;
+  const link = LIVE ? `<a href="./#${booking(rec)}">${booking(rec)}</a>` : booking(rec);
+  li.innerHTML = `<time>${hhmm(ts)} UTC</time><span class="bk">${link}</span><span>${kind === "in" ? "Booked in" : "Released"}: <span style="font-family:var(--mono)">${esc(rec.ip)}</span> ${who}. ${esc(note)}</span>`;
+  $("log").querySelector(".none")?.remove();
+  const items = [...$("log").children], at = items.find(o => Number(o.dataset.ts) < ts);
+  li.dataset.ts = ts;
+  $("log").insertBefore(li, at || null);
+  while ($("log").children.length > 16) $("log").lastChild.remove();
+}
+const arrivalNote = rec => rec.bancount > 1 ? `Repeat offender, ${ordinal(rec.bancount)} time inside. Sentence ${span(rec.sentence)}.` : `First offence. Sentence ${span(rec.sentence)}.`;
+
+function arrive(r) {
+  freeSlot(r);
+  Object.assign(r, { where: "yard", busy: true, gateUse: true, x: Z.gateOut[0], y: Z.gateOut[1], alpha: 1, fade: null, carry: false, path: null });
+  if (guard) setAnim(guard, "idle_side", false);
+  const finish = () => { if (!r.leaving) { r.busy = false; pickTask(r); } currentEvent = null; };
+  go(r, [Z.gate, ...findPath(Z.gate, Z.intake)], () => {
+    r.gateUse = false; setAnim(r, "idle_down", false);
+    if (r.rec.bancount > 1) welcome(r, finish);
+    else { say(r, "bang", 2); after(2.4, finish); }
+  });
+}
+function welcome(r, finish) {
+  const n = r.rec.bancount, want = n >= 10 ? 6 : n >= 5 ? 4 : n >= 3 ? 3 : 2;
+  const crew = idleOnes().filter(o => o !== r).sort((a, b) => dist([a.x, a.y], [r.x, r.y]) - dist([b.x, b.y], [r.x, r.y])).slice(0, want);
+  let waiting = crew.length, started = false;
+  const begin = () => {
+    if (started) return; started = true;
+    setAnim(r, "wave", false);
+    bubbles.push({ r, text: `×${n}`, until: now + 4.5 });
+    crew.forEach((o, i) => { if (o.busy && !o.path) { const side = Math.abs(o.x - r.x) > 10; setAnim(o, side ? "bump" : "wave", o.x > r.x); after(0.3 + i * 0.35, () => say(o, pick(["hi", "fist", "heart", "hi"]), 2.6)); } });
+    after(4.8, () => { crew.forEach(o => { if (o.where === "yard" && !o.leaving) { o.busy = false; pickTask(o); } }); finish(); });
+  };
+  crew.forEach((o, i) => {
+    freeSlot(o); o.busy = true;
+    const a = Math.PI * (0.56 + 0.88 * (crew.length === 1 ? 0.5 : i / (crew.length - 1)));   // an arc on the yard side of the newcomer
+    const wide = crew.length > 3 ? 1.35 : 1, spot = [r.x + Math.cos(a) * 30 * wide, r.y + Math.sin(a) * 24 * wide];
+    go(o, findPath([o.x, o.y], spot), () => { setAnim(o, "idle_side", o.x > r.x); if (--waiting <= 0) begin(); });
+  });
+  if (!crew.length) begin();
+  after(11, begin);            // do not keep the newcomer waiting for a straggler
+}
+function release(r) {
+  gone.add(r.id);
+  if (r.where === "outside") { robots.delete(r.id); currentEvent = null; return; }
+  r.leaving = true;
+  const walkOut = () => {
+    freeSlot(r); r.busy = true; r.carry = true; r.gateUse = true; r.doorUse = false; r.then = null;
+    go(r, findPath([r.x, r.y], Z.gate), () => {
+      setAnim(r, "wave", false);
+      idleOnes().filter(o => dist([o.x, o.y], [r.x, r.y]) < 150).slice(0, 3).forEach(o => say(o, "hi", 2));
+      after(1.7, () => go(r, [Z.gateOut], () => { robots.delete(r.id); currentEvent = null; }));
+    });
+  };
+  if (r.where === "inside") bringOut(r, walkOut); else if (r.fade) after(1.5, () => release(r)); else walkOut();
+}
+function stepEvents() {
+  if (currentEvent || !queue.length) return;
+  const next = robots.get(queue[0].id);
+  if (next && next.where !== "yard" && inYard().length >= MAX_YARD) {     // the yard is full: someone goes in first
+    if (![...robots.values()].some(o => o.doorUse && o.busy && o.where === "yard" && !o.leaving)) { const t = pick(idleOnes()); if (t) sendInside(t); }
+    return;
+  }
+  currentEvent = queue.shift();
+  const r = robots.get(currentEvent.id);
+  if (!r) { currentEvent = null; return; }
+  currentEvent.started = now;
+  if (currentEvent.kind === "in") arrive(r); else release(r);
+}
+
+/* ---------- the feed ---------- */
+function sync(data) {
+  if (!data || !Array.isArray(data.prisoners)) return;
+  const wall = Date.now() / 1000, seen = new Set();
+  const fresh = [];
+  for (const rec of data.prisoners) {
+    const id = keyOf(rec);
+    seen.add(id);
+    if (gone.has(id) || rec.release <= wall) continue;
+    const have = robots.get(id);
+    if (have) { have.rec = rec; continue; }
+    const r = makeRobot(rec);
+    robots.set(id, r);
+    if (firstSync && rec.banned_at < data.generated - 600) fresh.push(r);
+    else if (queue.filter(e => e.kind === "in").length >= 4) { r.where = "inside"; logEvent("in", rec, rec.banned_at, arrivalNote(rec)); }   // a crowd at the gate: the rest are taken straight in
+    else { r.where = "outside"; queue.push({ kind: "in", id }); logEvent("in", rec, rec.banned_at, arrivalNote(rec)); }
+  }
+  if (firstSync) {
+    fresh.sort(() => Math.random() - 0.5).forEach((r, i) => { if (i < MAX_YARD) { r.where = "yard"; pickTask(r, true); } });
+    const recent = data.prisoners.map(rec => ({ kind: "in", rec, ts: rec.banned_at })).concat((data.released || []).map(rec => ({ kind: "out", rec, ts: rec.released_at })))
+      .filter(e => !robots.get(keyOf(e.rec)) || robots.get(keyOf(e.rec)).where !== "outside").sort((a, b) => b.ts - a.ts).slice(0, 12);
+    recent.reverse().forEach(e => logEvent(e.kind, e.rec, e.ts, e.kind === "in" ? arrivalNote(e.rec) : `Served ${span(e.rec.sentence)}${e.rec.bancount > 1 ? `, ${ordinal(e.rec.bancount)} time inside` : ""}.`));
+    if (!$("log").children.length) $("log").innerHTML = `<li class="none">Nothing has come through the gate yet.</li>`;
+  } else {
+    for (const r of robots.values()) if (!seen.has(r.id) && !gone.has(r.id)) leave(r, "Let out early.");
+  }
+  firstSync = false;
+  $("status").textContent = `Records as of ${hhmm(data.generated)} UTC${LIVE ? ", checked every 5 minutes" : " (snapshot)"}.`;
+}
+function leave(r, note) {
+  if (gone.has(r.id)) return;
+  gone.add(r.id);
+  if (queue.filter(e => e.kind === "out").length >= 4) { freeSlot(r); robots.delete(r.id); }   // a mass release: the rest are let out the back
+  else queue.push({ kind: "out", id: r.id });
+  logEvent("out", r.rec, Math.round(Date.now() / 1000), note || `Served ${span(r.rec.sentence)}${r.rec.bancount > 1 ? `, ${ordinal(r.rec.bancount)} time inside` : ""}.`);
+}
+function everySecond() {
+  const wall = Date.now() / 1000;
+  for (const r of robots.values()) if (r.rec.release <= wall && r.where !== "outside") leave(r);
+  const all = [...robots.values()].filter(r => !gone.has(r.id));
+  $("n-yard").textContent = all.filter(r => r.where === "yard").length;
+  $("n-in").textContent = all.filter(r => r.where === "inside").length;
+  $("n-rep").textContent = all.filter(r => r.rec.bancount > 1).length;
+  const next = all.slice().sort((a, b) => a.rec.release - b.rec.release)[0];
+  $("n-next").textContent = next ? span(next.rec.release - wall) : "–";
+  $("n-next-l").textContent = next ? `until ${booking(next.rec)} walks free` : "next release";
+  $("clock").textContent = `${new Date().toISOString().slice(11, 16)} UTC`;
+}
+
+/* ---------- simulation step ---------- */
+function update(dt) {
+  now += dt;
+  for (let i = timers.length - 1; i >= 0; i--) if (timers[i].at <= now) { const f = timers.splice(i, 1)[0].fn; f(); }
+  stepEvents();
+  if (currentEvent && now - currentEvent.started > 90) currentEvent = null;     // never let one event jam the gate
+  balance();
+  let wantDoor = 0, wantGate = 0;
+  for (const r of robots.values()) {
+    if (r.where === "inside" || r.where === "outside") continue;
+    r.t += dt;
+    if (r.fade) {
+      r.fade.t += dt / 0.7;
+      const u = Math.min(1, r.fade.t);
+      r.alpha = r.fade.dir < 0 ? 1 - u : u;
+      r.y += r.fade.dir < 0 ? -dt * 13 : dt * 13;
+      if (u >= 1) { const f = r.fade.then; r.fade = null; r.alpha = 1; if (r.where !== "inside") r.y = Z.door[1]; f(); }
+    } else if (r.path) {
+      let step = SPEED * dt;
+      while (step > 0 && r.path && r.path.length) {
+        const [tx, ty] = r.path[0], dx = tx - r.x, dy = ty - r.y, d = Math.hypot(dx, dy);
+        if (d <= step) { r.x = tx; r.y = ty; step -= d; r.path.shift(); continue; }
+        r.x += dx / d * step; r.y += dy / d * step; step = 0;
+        const horiz = Math.abs(dx) >= Math.abs(dy);
+        setAnim(r, ball.holder === r ? "dribble" : horiz ? "walk_side" : dy > 0 ? "walk_down" : "walk_up", horiz ? dx < 0 : false);
+      }
+      if (r.path && !r.path.length) { r.path = null; if (r.task) r.task.going = false; const f = r.then; r.then = null; if (f) f(); else if (r.anim.startsWith("walk")) setAnim(r, "idle_down"); }
+    } else runTask(r, dt);
+    if (r.doorUse && (r.fade || dist([r.x, r.y], Z.door) < 30)) wantDoor = 1;
+    if (r.gateUse && (r.x > Z.gate[0] - 70)) wantGate = 1;
+    if (r.emote && now > r.emoteUntil) r.emote = null;
+  }
+  door.open += Math.sign(wantDoor - door.open) * Math.min(Math.abs(wantDoor - door.open), dt * 3);
+  gate.open += Math.sign(wantGate - gate.open) * Math.min(Math.abs(wantGate - gate.open), dt * 1.6);
+  moveBall(dt);
+  for (let i = puffs.length - 1; i >= 0; i--) { puffs[i].t += dt; puffs[i].y -= dt * 7; if (puffs[i].t > 1.6) puffs.splice(i, 1); }
+  for (let i = bubbles.length - 1; i >= 0; i--) if (now > bubbles[i].until) bubbles.splice(i, 1);
+  if (guard) { guard.t += dt; if (!wantGate && guard.anim !== "idle_down" && gate.open < 0.05) setAnim(guard, "idle_down", false); }
+}
+
+/* ---------- drawing ---------- */
+const canvas = $("yard"), dctx = canvas.getContext("2d");
+const off = document.createElement("canvas"); off.width = W; off.height = H;
+const ctx = off.getContext("2d");
+const darkQ = matchMedia("(prefers-color-scheme: dark)");
+const isNight = () => { const t = document.documentElement.dataset.theme; return t ? t === "dark" : darkQ.matches; };
+const EMOTE_CHAR = { hi: "o/", bang: "!", heart: "<3", oil: "'", zzz: "z", fist: "#" };
+
+function frameOf(r) {
+  const row = ROWS[r.anim] || ROWS.idle_down, once = r.anim === "shoot" || r.anim === "drink" || r.anim === "smoke";
+  const f = Math.floor(r.t * row.fps);
+  return [row, once ? Math.min(row.frames - 1, f) : f % row.frames];
+}
+function drawRobot(r) {
+  const x = Math.round(r.x), y = Math.round(r.y), [row, f] = frameOf(r), sheet = r.isGuard ? guardSheet : sheets[r.variant % (sheets.length || 1)];
+  ctx.globalAlpha = r.alpha * 0.25; ctx.fillStyle = "#000";
+  if (r.anim !== "press" && !r.anim.startsWith("sit")) { ctx.fillRect(x - 6, y - 1, 12, 3); ctx.fillRect(x - 4, y - 2, 8, 5); }
+  ctx.globalAlpha = r.alpha;
+  if (sheet) {
+    const [fw, fh] = FRAME, sx = f * fw, sy = row.row * fh;
+    if (r.flip) { ctx.save(); ctx.translate(x, 0); ctx.scale(-1, 1); ctx.drawImage(sheet, sx, sy, fw, fh, -ANCHOR[0], y - ANCHOR[1], fw, fh); ctx.restore(); }
+    else ctx.drawImage(sheet, sx, sy, fw, fh, x - ANCHOR[0], y - ANCHOR[1], fw, fh);
+  } else {                                 // stand-in until the art loads
+    const bob = r.anim.startsWith("walk") ? f % 2 : 0;
+    ctx.fillStyle = r.isGuard ? "#2d4a7a" : "#de632a"; ctx.fillRect(x - 5, y - 14 - bob, 10, 13);
+    ctx.fillStyle = "#9aa3a0"; ctx.fillRect(x - 6, y - 25 - bob, 12, 11);
+    ctx.fillStyle = ["#ff4b3e", "#ffb020", "#5fd0e0", "#7ddc6a"][r.variant % 4]; ctx.fillRect(x - 3, y - 21 - bob, 6, 2);
+  }
+  if (r.carry) drawProp("box", x + (r.flip ? -11 : 1), y - 15);
+  ctx.globalAlpha = 1;
+  if (r.emote) {
+    if (!drawProp("emote_" + r.emote, x - 6, y - 43)) { ctx.fillStyle = "#fff"; ctx.fillRect(x - 6, y - 42, 12, 10); ctx.fillStyle = "#161c19"; ctx.font = "8px monospace"; ctx.fillText(EMOTE_CHAR[r.emote] || "?", x - 5, y - 34); }
+  }
+}
+function drawProp(name, x, y, frame = 0) {
+  const p = propByName[name];
+  if (!p || !propsImg) return false;
+  const q = p.frames ? p.frames[Math.min(p.frames.length - 1, frame)] : p.rect;
+  if (!q) return false;
+  ctx.drawImage(propsImg, q[0], q[1], q[2], q[3], Math.round(x), Math.round(y), q[2], q[3]);
+  return true;
+}
+function drawFallbackScene() {
+  ctx.fillStyle = "#b9beb4"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#58615c"; ctx.fillRect(0, 0, W, 56); ctx.fillRect(0, 0, 10, H); ctx.fillRect(630, 0, 10, H); ctx.fillRect(0, 350, W, 10);
+  ctx.fillStyle = "#1c2420"; ctx.fillRect(Z.door[0] - 11, 26, 22, 30); ctx.fillRect(630, Z.gate[1] - 25, 10, 50);
+  ctx.strokeStyle = "#e9e4d0"; ctx.strokeRect(24.5, 96.5, 190, 200);
+  ctx.fillStyle = "#2b302e"; ctx.fillRect(262, 222, 180, 110);
+  ctx.fillStyle = "#6c7670"; for (const o of Z.obstacles) ctx.fillRect(o[0], o[1], o[2], o[3]);
+}
+function draw() {
+  ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = false;
+  if (bgImg) ctx.drawImage(bgImg, 0, 0); else drawFallbackScene();
+  const dp = propByName.block_door, gp = propByName.main_gate;
+  if (dp?.at) drawProp("block_door", dp.at[0], dp.at[1], Math.round(door.open * (dp.frames.length - 1)));
+  if (gp?.at) drawProp("main_gate", gp.at[0], gp.at[1], Math.round(gate.open * (gp.frames.length - 1)));
+  const items = [];
+  for (const p of props) if (!hidden.has(p.name)) items.push({ y: p.baseline ?? p.at[1] + p.rect[3], prop: p });
+  for (const r of robots.values()) if (r.where === "yard") items.push({ y: r.y + (r.anim === "press" ? -3 : 0), robot: r });
+  if (guard) items.push({ y: guard.y, robot: guard });
+  if (ball.state !== "held") items.push({ y: ball.y, ball: true });
+  items.sort((a, b) => a.y - b.y);
+  for (const it of items) {
+    if (it.prop) ctx.drawImage(propsImg, it.prop.rect[0], it.prop.rect[1], it.prop.rect[2], it.prop.rect[3], it.prop.at[0], it.prop.at[1], it.prop.rect[2], it.prop.rect[3]);
+    else if (it.robot) drawRobot(it.robot);
+    else {
+      ctx.globalAlpha = 0.25; ctx.fillStyle = "#000"; ctx.fillRect(Math.round(ball.x) - 3, Math.round(ball.y) - 1, 6, 2); ctx.globalAlpha = 1;
+      if (!drawProp("ball", ball.x - 4, ball.y - 7 - ball.z, Math.floor(now * 6) % 2)) { ctx.fillStyle = "#c7622a"; ctx.fillRect(Math.round(ball.x) - 3, Math.round(ball.y - 6 - ball.z), 6, 6); }
+    }
+  }
+  for (const p of puffs) {
+    const f = Math.min(3, Math.floor(p.t / 0.4));
+    ctx.globalAlpha = 1 - p.t / 1.7;
+    if (!drawProp("smoke", p.x - 4, p.y - 4, f)) { ctx.fillStyle = "#d9ddd6"; ctx.fillRect(Math.round(p.x) - 2, Math.round(p.y) - 2, 3 + f, 3 + f); }
+  }
+  ctx.globalAlpha = 1;
+  if (isNight()) {
+    ctx.globalCompositeOperation = "multiply"; ctx.fillStyle = "#7f8cc0"; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "lighter";
+    const lamp = propByName.lamp_post || propByName.lamp, lights = [[Z.door[0], Z.door[1] - 6, 46, 0.34], [Z.gate[0] - 12, Z.gate[1], 54, 0.3]];
+    if (lamp?.at) lights.push([lamp.at[0] + lamp.rect[2] / 2, lamp.at[1] + 12, 70, 0.4]);
+    lights.push([330 + Math.cos(now * 0.16) * 230, 200 + Math.sin(now * 0.23) * 100, 60, 0.42]);     // the tower's searchlight
+    for (const [x, y, rad, a] of lights) {
+      const g = ctx.createRadialGradient(x, y, 2, x, y, rad);
+      g.addColorStop(0, `rgba(255,236,170,${a})`); g.addColorStop(1, "rgba(255,236,170,0)");
+      ctx.fillStyle = g; ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+  dctx.imageSmoothingEnabled = false;
+  dctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+  const k = canvas.width / W;
+  dctx.textAlign = "center"; dctx.textBaseline = "middle"; dctx.font = `600 ${Math.round(7.5 * k)}px "IBM Plex Mono", monospace`;
+  for (const b of bubbles) {
+    if (b.r.where !== "yard") continue;
+    const w = (b.text.length * 5 + 6) * k, h = 11 * k, x = b.r.x * k, y = (b.r.y - 49) * k;
+    dctx.fillStyle = "#161c19"; dctx.fillRect(x - w / 2 - k, y - h / 2 - k, w + 2 * k, h + 2 * k);
+    dctx.fillStyle = "#de632a"; dctx.fillRect(x - w / 2, y - h / 2, w, h);
+    dctx.fillStyle = "#161c19"; dctx.fillText(b.text, x, y + 0.5 * k);
+  }
+}
+function resize() {
+  const css = Math.max(560, Math.floor(canvas.parentElement.clientWidth)), dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.style.width = css + "px"; canvas.style.height = Math.round(css * H / W) + "px";
+  canvas.width = Math.round(css * dpr); canvas.height = Math.round(css * H / W * dpr);
+}
+
+/* ---------- who is that ---------- */
+function robotAt(ev) {
+  const b = canvas.getBoundingClientRect(), x = (ev.clientX - b.left) * W / b.width, y = (ev.clientY - b.top) * H / b.height;
+  return inYard().filter(r => Math.abs(r.x - x) < 9 && y > r.y - 27 && y < r.y + 3).sort((a, b) => b.y - a.y)[0];
+}
+function showTip(ev) {
+  const r = robotAt(ev), tip = $("tip");
+  canvas.style.cursor = r && LIVE ? "pointer" : "default";
+  if (!r) { tip.style.display = "none"; return null; }
+  const c = r.rec, left = c.release - Date.now() / 1000;
+  tip.innerHTML = `<b>${booking(c)} · ${esc(c.ip)}</b>${flag(c.cc)} ${esc(place(c))}${c.org ? `<br>${esc(c.org)}` : ""}<br>${c.bancount > 1 ? `Repeat offender, ${ordinal(c.bancount)} time inside` : "First offence"}<br>${span(c.sentence)} sentence, ${span(left)} to go${c.tried ? `<small>${esc(c.tried)}</small>` : ""}`;
+  tip.style.display = "block";
+  const s = canvas.closest(".stage").getBoundingClientRect();
+  tip.style.left = Math.max(4, Math.min(s.width - tip.offsetWidth - 4, ev.clientX - s.left + 14)) + "px";
+  tip.style.top = Math.max(4, ev.clientY - s.top - tip.offsetHeight - 10) + "px";
+  return r;
+}
+canvas.addEventListener("pointermove", showTip);
+canvas.addEventListener("pointerleave", () => $("tip").style.display = "none");
+canvas.addEventListener("click", ev => { const r = showTip(ev); if (r && LIVE && ev.pointerType !== "touch") location.href = `./#${booking(r.rec)}`; });
+
+/* day shift or lights out: follows the system until you choose, then remembers the
+   choice for every page of the site, and switches other open pages with it */
+function labelLights() { const night = isNight(); $("lights").textContent = night ? "Day shift" : "Lights out"; $("lights").setAttribute("aria-pressed", String(night)); }
+$("lights").addEventListener("click", () => {
+  const mode = isNight() ? "light" : "dark";
+  document.documentElement.dataset.theme = mode;
+  try { localStorage.setItem("lights", mode); } catch (e) {}
+  labelLights();
+});
+darkQ.addEventListener("change", labelLights);
+addEventListener("storage", e => { if (e.key === "lights" && (e.newValue === "dark" || e.newValue === "light")) { document.documentElement.dataset.theme = e.newValue; labelLights(); } });
+labelLights();
+
+$("replay").addEventListener("click", () => {
+  const latest = [...robots.values()].filter(r => !gone.has(r.id) && r.where !== "outside" && !r.busy).sort((a, b) => b.rec.banned_at - a.rec.banned_at);
+  const r = latest.find(r => r.rec.bancount > 1 && Math.random() < 0.6) || latest[0];
+  if (!r) return;
+  if (r.where === "yard") freeSlot(r);
+  r.where = "outside"; r.path = null;
+  queue.push({ kind: "in", id: r.id });
+});
+
+/* ---------- go ---------- */
+let running = !matchMedia("(prefers-reduced-motion: reduce)").matches, last = 0;
+function tick(ts) {
+  const dt = Math.min(0.1, (ts - last) / 1000 || 0);
+  last = ts;
+  if (running) { for (let i = 0; i < FAST; i++) update(dt); }
+  draw();
+  requestAnimationFrame(tick);
+}
+(async function start() {
+  await loadArt();
+  buildGrid(); buildSlots();
+  ball.x = Z.hoop.rim[0] + 30; ball.y = Z.hoop.pole[1] + 10;
+  guard = { isGuard: true, x: Z.guardPost[0], y: Z.guardPost[1], anim: "idle_down", t: 0, flip: false, alpha: 1, variant: 0 };
+  if (LIVE) $("site-nav").hidden = false;
+  if (!running) { $("play").hidden = false; $("play").addEventListener("click", () => { running = true; $("play").hidden = true; }); }
+  resize(); addEventListener("resize", resize);
+  sync(DATA);
+  everySecond(); setInterval(everySecond, 1000);
+  if (LIVE) setInterval(() => fetch("yard.json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(sync).catch(() => {}), 300000);
+  window.__yard = { robots, queue, ball, sync, slots: () => slots, Z: () => Z, state: () => ({ now, yard: inYard().length, inside: [...robots.values()].filter(r => r.where === "inside").length, queue: queue.length, current: currentEvent }) };
+  requestAnimationFrame(tick);
+})();
+</script>

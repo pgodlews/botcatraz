@@ -1,0 +1,23 @@
+# Install as /etc/fail2ban/filter.d/sshd.local (next to the stock sshd.conf).
+# Written against fail2ban 1.0.2; check with fail2ban-regex before relying on it
+# with another version (see README.md in this folder).
+#
+# For servers where SSH logins are key-only. There a guess at root (or any real
+# account) never gets as far as a failed password. The client just hangs up
+# during authentication, and the stock filter in "normal" mode treats that line
+# as harmless (the rule named mdre-normal-other, which is tried before any
+# mode-specific rule). This replaces that rule: a hang-up by a real account name
+# is a failure, one per connection, and every other hang-up stays harmless as
+# before.
+#
+# Deliberately narrower than mode = aggressive. Aggressive also counts connections
+# that hang up before naming a user and clients that fail to agree a key type,
+# which is what ssh-keyscan and health checks look like, so it can ban your own
+# monitoring or your own address. Unknown users are left out because the stock
+# filter already counts "Invalid user".
+#
+# The second line is the stock rule with one change: it steps aside for the lines
+# the first one handles, so fail2ban-regex reports them as matched, not ignored.
+[Definition]
+mdre-normal-other = ^<F-MLFFORGET>(?:Connection (?:closed|reset)|Disconnected)</F-MLFFORGET> (?:by|from) authenticating user <F-USER>\S+</F-USER> <HOST>%(__on_port_opt)s\s+\[preauth\]\s*$
+                    ^<F-NOFAIL><F-MLFFORGET>(Connection (?:closed|reset)|Disconnected)</F-MLFFORGET></F-NOFAIL> (?:by|from)(?! authenticating user \S+ \S+ .*\[preauth\])%(__authng_user)s <HOST>(?:%(__suff)s|\s*)$

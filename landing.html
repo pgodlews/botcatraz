@@ -1,0 +1,94 @@
+<title>Botcatraz</title>
+<script>/* the saved Lights out / Day shift choice, applied before the page is drawn */try { const t = localStorage.getItem("lights") || localStorage.getItem("yard-lights"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Stencil+One&display=swap">
+<style>
+/* Front page: one card per server, each leading to its cells and its yard. */
+:root {
+  --wall: #dfe4da; --cell: #eef1ea; --ink: #1b231f; --ink-2: #48554d; --ink-3: #6b7870; --rule: #b8c1b4;
+  --steel: #66726b; --jumpsuit: #d9611a; --jumpsuit-deep: #a8460d;
+  --display: "Saira Stencil One", "Arial Narrow", Impact, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --wall: #131917; --cell: #1c2420; --ink: #e4eae3; --ink-2: #aab6ad; --ink-3: #86938a; --rule: #33403a; --steel: #7c8981; --jumpsuit: #de632a; --jumpsuit-deep: #f08a52; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --wall: #131917; --cell: #1c2420; --ink: #e4eae3; --ink-2: #aab6ad; --ink-3: #86938a; --rule: #33403a; --steel: #7c8981; --jumpsuit: #de632a; --jumpsuit-deep: #f08a52; color-scheme: dark; }
+body { background: var(--wall); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; margin: 0; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 26px; }
+h1, h2, p, dl, dd { margin: 0; }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(40px, 8vw, 72px); line-height: .95; letter-spacing: .02em; }
+h2 { font-family: var(--display); font-weight: 400; font-size: 30px; letter-spacing: .04em; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.lede { max-width: 60ch; color: var(--ink-2); }
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lights { font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); background: var(--cell);
+  border: 2px solid var(--steel); padding: 6px 11px; cursor: pointer; }
+.lights:hover { border-color: var(--jumpsuit); }
+.lights:focus-visible { outline: 2px solid var(--jumpsuit); outline-offset: 2px; }
+.jails { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.jail { border: 2px solid var(--steel); background: var(--cell); padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 12px; }
+.jail .where { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.count { display: flex; align-items: baseline; gap: 10px; }
+.count b { font-family: var(--display); font-weight: 400; font-size: 64px; line-height: .9; color: var(--jumpsuit); font-variant-numeric: tabular-nums; }
+.count span { color: var(--ink-2); }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13.5px; border-top: 1px solid var(--rule); padding-top: 10px; }
+dt { color: var(--ink-3); } dd { font-variant-numeric: tabular-nums; }
+.links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 2px; }
+.links a { font: 500 13px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ink); text-decoration: none; border: 2px solid var(--steel); padding: 7px 12px; }
+.links a:hover { border-color: var(--jumpsuit); }
+a:focus-visible { outline: 2px solid var(--jumpsuit); outline-offset: 2px; }
+footer { font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 14px; }
+footer a { color: inherit; }
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:10px">
+    <div class="topbar"><p class="eyebrow" id="when"></p><button class="lights" id="lights" type="button">Lights out</button></div>
+    <h1>Botcatraz</h1>
+    <p class="lede">Each server keeps its own jail: every address fail2ban has locked out, drawn as the bot it is. Pick a jail to see its cells or watch its yard.</p>
+  </header>
+  <div class="jails" id="jails"></div>
+  <footer>Countries and networks: IP Geolocation by <a href="https://db-ip.com">DB-IP</a>, looked up offline on each server. Drawn by Botcatraz.</footer>
+</div>
+
+<script>
+"use strict";
+const SITES = /*__SITES__*/null || [];
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const n = v => Number(v).toLocaleString("en-GB");
+const flag = cc => cc && /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1f1a5 + c.charCodeAt(0))) : "";
+const hhmm = ts => new Date(ts * 1000).toISOString().slice(11, 16);
+document.getElementById("jails").innerHTML = SITES.map(s => `<article class="jail">
+  <p class="where">${flag(s.cc)} ${esc(s.place || "somewhere")} · roll call ${hhmm(s.generated)} UTC</p>
+  <h2>${esc(s.name)} Jail</h2>
+  <p class="count"><b>${n(s.inside)}</b><span>inside right now</span></p>
+  <dl>
+    ${s.wings.map(w => `<dt>${esc(w.wing)} wing · ${esc(w.label)}</dt><dd>${n(w.inside)} inside</dd>`).join("")}
+    <dt>Repeat offenders inside</dt><dd>${n(s.repeat)}${s.worst > 1 ? `, the worst on its ${n(s.worst)}${["th", "st", "nd", "rd"][s.worst % 100 > 10 && s.worst % 100 < 14 ? 0 : s.worst % 10 < 4 ? s.worst % 10 : 0]} sentence` : ""}</dd>
+    <dt>Ever jailed, on record</dt><dd>${n(s.on_record)}</dd>
+    <dt>Knocks in ${s.window_days} days</dt><dd>${n(s.knocks)}</dd>
+  </dl>
+  <p class="links"><a href="${encodeURIComponent(s.id)}/">Cells</a><a href="${encodeURIComponent(s.id)}/yard.html">Yard</a></p>
+</article>`).join("") || `<p class="lede">No jail has reported in yet.</p>`;
+document.getElementById("when").textContent = SITES.length ? `${SITES.length} jail${SITES.length === 1 ? "" : "s"} · ${n(SITES.reduce((a, s) => a + s.inside, 0))} inside in all` : "";
+
+/* day shift or lights out: follows the system until you choose, then remembers the
+   choice for every page of the site, and switches other open pages with it */
+(() => {
+  const root = document.documentElement, button = document.getElementById("lights");
+  const darkQ = matchMedia("(prefers-color-scheme: dark)");
+  const night = () => root.dataset.theme ? root.dataset.theme === "dark" : darkQ.matches;
+  const label = () => { button.textContent = night() ? "Day shift" : "Lights out"; button.setAttribute("aria-pressed", String(night())); };
+  button.addEventListener("click", () => {
+    const mode = night() ? "light" : "dark";
+    root.dataset.theme = mode;
+    try { localStorage.setItem("lights", mode); } catch (e) {}
+    label();
+  });
+  addEventListener("storage", e => { if (e.key === "lights" && (e.newValue === "dark" || e.newValue === "light")) { root.dataset.theme = e.newValue; label(); } });
+  darkQ.addEventListener("change", label);
+  label();
+})();
+</script>

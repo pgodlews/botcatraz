@@ -1,0 +1,163 @@
+{
+  "size": [
+    100,
+    85
+  ],
+  "placard": [
+    28,
+    61,
+    44,
+    20
+  ],
+  "variants": [
+    {
+      "front": "mug-0.png",
+      "side": "mug-0-side.png",
+      "type": "box; coil spring; red visor slit",
+      "eye": "#ff4b3e"
+    },
+    {
+      "front": "mug-1.png",
+      "side": "mug-1-side.png",
+      "type": "tall box; single rod, red ball tip; one big round red lens",
+      "eye": "#ff4b3e"
+    },
+    {
+      "front": "mug-2.png",
+      "side": "mug-2-side.png",
+      "type": "wide box; twin rods, red tips; two red square eyes, angry brow line",
+      "eye": "#ff4b3e"
+    },
+    {
+      "front": "mug-3.png",
+      "side": "mug-3-side.png",
+      "type": "box; twin rods, amber tips; two amber square eyes",
+      "eye": "#ffb020"
+    },
+    {
+      "front": "mug-4.png",
+      "side": "mug-4-side.png",
+      "type": "box; curly wire; amber visor bar",
+      "eye": "#ffb020"
+    },
+    {
+      "front": "mug-5.png",
+      "side": "mug-5-side.png",
+      "type": "round; coil spring; one big amber lens",
+      "eye": "#ffb020"
+    },
+    {
+      "front": "mug-6.png",
+      "side": "mug-6-side.png",
+      "type": "dome; single rod; cyan visor",
+      "eye": "#5fd0e0"
+    },
+    {
+      "front": "mug-7.png",
+      "side": "mug-7-side.png",
+      "type": "wide box with ear bolts; none; two green round eyes",
+      "eye": "#7ddc6a"
+    },
+    {
+      "front": "mug-8.png",
+      "side": "mug-8-side.png",
+      "type": "television; rabbit ears; two cyan screen eyes",
+      "eye": "#5fd0e0"
+    },
+    {
+      "front": "mug-9.png",
+      "side": "mug-9-side.png",
+      "type": "upturned bucket, stocky; none; one amber slot eye",
+      "eye": "#ffb020"
+    },
+    {
+      "front": "mug-10.png",
+      "side": "mug-10-side.png",
+      "type": "glass bulb, slim tall; none; glowing amber filament",
+      "eye": "#ffb020"
+    },
+    {
+      "front": "mug-11.png",
+      "side": "mug-11-side.png",
+      "type": "toaster, two top slots; none; two red LED eyes",
+      "eye": "#ff4b3e"
+    },
+    {
+      "front": "mug-12.png",
+      "side": "mug-12-side.png",
+      "type": "hexagonal nut, rust accents; none; one off-centre green lens",
+      "eye": "#7ddc6a"
+    },
+    {
+      "front": "mug-13.png",
+      "side": "mug-13-side.png",
+      "type": "diving helmet; none; round cyan porthole",
+      "eye": "#5fd0e0"
+    },
+    {
+      "front": "mug-14.png",
+      "side": "mug-14-side.png",
+      "type": "small head, barrel body, stocky; none; two green eyes",
+      "eye": "#7ddc6a"
+    },
+    {
+      "front": "mug-15.png",
+      "side": "mug-15-side.png",
+      "type": "binocular head, periscope neck, slim; none; two red eyes",
+      "eye": "#ff4b3e"
+    },
+    {
+      "front": "mug-16.png",
+      "side": "mug-16-side.png",
+      "type": "padlock with U-shackle; none; amber keyhole",
+      "eye": "#ffb020"
+    },
+    {
+      "front": "mug-17.png",
+      "side": "mug-17-side.png",
+      "type": "traffic signal, slim; none; red, amber and green lenses",
+      "eye": "#ffb020"
+    },
+    {
+      "front": "mug-18.png",
+      "side": "mug-18-side.png",
+      "type": "reel-to-reel tape deck; none; cyan tape window",
+      "eye": "#5fd0e0"
+    },
+    {
+      "front": "mug-19.png",
+      "side": "mug-19-side.png",
+      "type": "flash camera; none; cyan lens barrel",
+      "eye": "#5fd0e0"
+    },
+    {
+      "front": "mug-20.png",
+      "side": "mug-20-side.png",
+      "type": "safety cone, white band; none; two green eyes",
+      "eye": "#7ddc6a"
+    },
+    {
+      "front": "mug-21.png",
+      "side": "mug-21-side.png",
+      "type": "parking meter, slim; none; red expired flag window",
+      "eye": "#ff4b3e"
+    }
+  ],
+  "palette": [
+    "#161c19",
+    "#4b5552",
+    "#5fd0e0",
+    "#6f7a77",
+    "#7ddc6a",
+    "#9aa3a0",
+    "#a0522d",
+    "#b84a1c",
+    "#c3cac6",
+    "#de632a",
+    "#f08a4b",
+    "#f3f1e7",
+    "#ff4b3e",
+    "#ffb020"
+  ],
+  "added_metal_midtones": []
+}

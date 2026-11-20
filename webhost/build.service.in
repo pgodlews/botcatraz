@@ -1,0 +1,11 @@
+[Unit]
+Description=Rebuild the jail pages from fresh exports
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=@USER@
+WorkingDirectory=@DIR@
+# Which servers, and how to reach them, is in servers.json next to build.py.
+ExecStart=/usr/bin/python3 build.py --www www
